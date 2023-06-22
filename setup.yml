@@ -1,0 +1,4 @@
+# vim:ft=yaml.ansible
+- name: Audio Server Setup
+  hosts: localhost
+  connection: local
