@@ -1,12 +1,12 @@
 syntax = "proto3";
 package home_audio_manager;
 
-service RpcDeviceService {
-    rpc GetDevices (Empty) returns (GetDevicesResponse);
-}
-
 message Empty {}
 
-message GetDevicesResponse {
+service RpcSourceService {
+    rpc GetSources (Empty) returns (GetSourcesResponse);
+}
+
+message GetSourcesResponse {
     repeated string names = 1;
 }

@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait};
-use home_audio_manager::rpc_device_service_server::{RpcDeviceService, RpcDeviceServiceServer};
-use home_audio_manager::{Empty, GetDevicesResponse};
+use home_audio_manager::rpc_source_service_server::{RpcSourceService, RpcSourceServiceServer};
+use home_audio_manager::{Empty, GetSourcesResponse};
 use tonic::{transport::Server, Request, Response, Status};
 
 pub mod home_audio_manager {
@@ -8,20 +8,20 @@ pub mod home_audio_manager {
 }
 
 #[derive(Debug, Default)]
-pub struct DeviceService;
+pub struct SourceService;
 
 #[tonic::async_trait]
-impl RpcDeviceService for DeviceService {
-    async fn get_devices(
+impl RpcSourceService for SourceService {
+    async fn get_sources(
         &self,
         request: Request<Empty>,
-    ) -> Result<Response<GetDevicesResponse>, Status> {
+    ) -> Result<Response<GetSourcesResponse>, Status> {
         println!("Got a request: {:?}", request);
 
         let host = cpal::default_host();
         let devices = host.output_devices().unwrap();
 
-        let res = GetDevicesResponse {
+        let res = GetSourcesResponse {
             names: devices.flat_map(|dev| dev.name()).collect(),
         };
 
@@ -32,10 +32,10 @@ impl RpcDeviceService for DeviceService {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let addr = "[::1]:50051".parse()?;
-    let manager = DeviceService::default();
+    let manager = SourceService::default();
 
     Server::builder()
-        .add_service(RpcDeviceServiceServer::new(manager))
+        .add_service(RpcSourceServiceServer::new(manager))
         .serve(addr)
         .await?;
 
