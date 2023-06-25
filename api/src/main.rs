@@ -4,25 +4,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::process::Command;
 
+use actix_cors::Cors;
 use actix_web::{get, App, HttpResponse, HttpServer, Responder};
 use cpal::traits::{DeviceTrait, HostTrait};
 use rodio::Decoder;
-
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(get_sources))
-        .bind(("127.0.0.1", 50051))?
-        .run()
-        .await
-}
-
-#[get("/sources")]
-async fn get_sources() -> impl Responder {
-    let host = cpal::default_host();
-    let devices = host.output_devices().unwrap();
-
-    HttpResponse::Ok().json(devices.flat_map(|dev| dev.name()).collect::<Vec<_>>())
-}
 
 fn get_audio_from_file(title: &str, url: &str) -> Result<Decoder<BufReader<File>>, anyhow::Error> {
     let path = format!("audio/{title}");
@@ -45,4 +30,27 @@ fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
         .args(["-x", "--bestaudio", &format!("-o {download_location}"), url])
         .output()?;
     Ok(())
+}
+
+#[get("/sources")]
+async fn get_sources() -> impl Responder {
+    let host = cpal::default_host();
+    let devices = host.output_devices().unwrap();
+
+    HttpResponse::Ok().json(devices.flat_map(|dev| dev.name()).collect::<Vec<_>>())
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header();
+
+        App::new().wrap(cors).service(get_sources)
+    })
+    .bind(("127.0.0.1", 50051))?
+    .run()
+    .await
 }
