@@ -17,7 +17,11 @@ export const YouTubeVideoSchema = z.object({
 	id: z.object({
 		videoId: z.string().nonempty()
 	}),
-	snippet: z.object({ title: z.string().nonempty(), thumbnails: ThumbNailsSchema })
+	snippet: z.object({
+		title: z.string(),
+		description: z.string(),
+		thumbnails: ThumbNailsSchema
+	})
 });
 
 export const YouTubeSearchResultSchema = z.object({ items: YouTubeVideoSchema.array() });
