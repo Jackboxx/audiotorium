@@ -8,6 +8,7 @@ use std::{fs::File, path::PathBuf};
 use actix_cors::Cors;
 use actix_web::web::{Data, Query};
 use actix_web::{get, post, App, HttpResponse, HttpServer, Responder};
+use anyhow::anyhow;
 use cpal::traits::{DeviceTrait, HostTrait};
 use rodio::Decoder;
 use serde::{Deserialize, Serialize};
@@ -37,9 +38,24 @@ fn get_audio_from_file(title: &str) -> anyhow::Result<Decoder<BufReader<File>>> 
 }
 
 fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
-    Command::new("yt-dlp")
-        .args(["-x", "--bestaudio", &format!("-o {download_location}"), url])
+    let out = Command::new("yt-dlp")
+        .args([
+            "-f",
+            "bestaudio",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "-o",
+            download_location,
+            url,
+        ])
         .output()?;
+
+    if out.status.code().unwrap_or(1) != 0 {
+        dbg!(out);
+        return Err(anyhow!(""));
+    }
+
     Ok(())
 }
 
@@ -62,7 +78,10 @@ async fn add_to_queue(
     let AddQueueParams { title, url } = params.0;
     let path = Path::new(AUDIO_DIR).join(&title);
 
-    if !path.exists() {
+    let mut path_with_ext = path.clone();
+    path_with_ext.set_extension("mp3");
+
+    if !path_with_ext.try_exists().unwrap_or(false) {
         let Some(str_path) = path.to_str() else { return HttpResponse::InternalServerError().json(ErrorResponse { error: format!( "failed to construct valid path with title: {title}" )});};
         match download_audio(&url, str_path) {
             Err(err) => {
