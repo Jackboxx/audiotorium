@@ -57,6 +57,7 @@ async fn add_to_queue(
     params: Query<AddQueueParams>,
 ) -> impl Responder {
     let Ok(mut data) = data.lock() else { return HttpResponse::InternalServerError().json(ErrorResponse { error: "failed to acquire lock for application state".to_owned()})};
+    let queue = &mut data.queue;
 
     let AddQueueParams { title, url } = params.0;
     let path = Path::new(AUDIO_DIR).join(&title);
@@ -73,8 +74,8 @@ async fn add_to_queue(
         }
     }
 
-    data.queue.push(path);
-    HttpResponse::Ok().json(data.queue.clone())
+    queue.push(path);
+    HttpResponse::Ok().json(queue.clone())
 }
 
 #[actix_web::main]
@@ -82,15 +83,16 @@ async fn main() -> std::io::Result<()> {
     env::set_var("RUST_LOG", "actix_web=debug,actix_server=info");
     env_logger::init();
 
-    HttpServer::new(|| {
+    let data = Data::new(Mutex::new(AppState { queue: Vec::new() }));
+
+    HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
             .allow_any_header();
-
         App::new()
             .wrap(cors)
-            .app_data(Data::new(Mutex::new(AppState { queue: Vec::new() })))
+            .app_data(data.clone())
             .service(get_sources)
             .service(add_to_queue)
     })
