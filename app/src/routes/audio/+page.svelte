@@ -1,51 +1,51 @@
 <script lang="ts">
-	import SearchBar from '../../lib/SearchBar.svelte';
-	import {
-		YouTubeSearchResultSchema,
-		getVideoUrl,
-		searchForVideos,
-		type YouTubeVideo,
-		getBestThumbNail
-	} from '../../schema/video';
+	import Banner from '$lib/banner.svelte';
+	import YouTubeSearch from '$lib/search/YouTubeSearch.svelte';
+	import { getVideoUrl } from '../../schema/video';
 
-	let searchText = '';
-	let searchResults: YouTubeVideo[] = [];
-
-	const onConfirm = async () => {
-		const res = await searchForVideos(searchText);
-
-		try {
-			searchResults = YouTubeSearchResultSchema.parse(await res.json()).items;
-		} catch (err) {
-			console.error(err);
-		}
-	};
+	const queue = [
+		'hi',
+		'rick',
+		'foo',
+		'bar',
+		'baz',
+		'a',
+		'b',
+		'c',
+		'fuck',
+		'more',
+		'a',
+		'b',
+		'c'
+	];
 </script>
 
 <div
-	class="flex min-h-screen w-full flex-col items-center bg-gray-100 px-2 dark:bg-zinc-900"
+	class="grid h-screen w-full grid-rows-5
+    bg-gray-100 dark:bg-zinc-900 lg:grid-cols-2 lg:grid-rows-1"
 >
-	<SearchBar bind:searchText {onConfirm} />
-	{#each searchResults as video}
-		<div class="my-4 grid aspect-video w-full max-w-[800px] grid-cols-2 gap-4">
-			<div>
-				<a href={getVideoUrl(video)} class="h-full w-full">
-					<img
-						class="h-full w-full rounded object-cover"
-						src={getBestThumbNail(video.snippet.thumbnails).url}
-						alt={video.snippet.title}
-					/>
-				</a>
-			</div>
-			<div class="flex flex-col gap-2">
-				<span class="text-lg lg:text-2xl">
-					{video.snippet.title}
-				</span>
+	<YouTubeSearch
+		onSearchResultClick={(video) => {
+			console.log(getVideoUrl(video));
+		}}
+	/>
 
-				<span class="text-md lg:text-lg">
-					{video.snippet.description}
-				</span>
-			</div>
+	<div
+		class="row-span-2 flex flex-col items-center gap-2 lg:row-span-1 lg:border-l-[1px]
+        lg:border-l-black lg:dark:border-l-neutral-300"
+	>
+		<div class="w-full">
+			<Banner text="Playing" />
 		</div>
-	{/each}
+		<div class="text-lg">{queue.at(0)}</div>
+
+		<div class="w-full">
+			<Banner text="Next" />
+		</div>
+		<div class="flex w-full flex-col gap-1 overflow-y-scroll">
+			{#each queue.splice(1) as item}
+				<div class="text-lg">{item}</div>
+			{/each}
+		</div>
+	</div>
 </div>

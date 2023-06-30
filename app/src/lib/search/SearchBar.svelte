@@ -9,7 +9,7 @@
 	};
 </script>
 
-<div class="m-8 w-10/12 min-w-[140px] max-w-[800px]">
+<div class="w-10/12 min-w-[140px] max-w-[800px]">
 	<div class="relative flex w-full flex-wrap items-stretch">
 		<input
 			type="search"
