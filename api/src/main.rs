@@ -24,10 +24,12 @@ pub struct AppData {
     queue_server_addr: Addr<QueueServer>
 }
 
+#[derive(Default)]
 pub struct QueueServer {
     sources: HashMap<String, AudioSource>,
 }
 
+#[derive(Debug)]
 pub struct QueueSession {
     server_addr: Addr<QueueServer>
 }
@@ -81,15 +83,6 @@ pub struct LoopQueueParams {
 #[serde(rename_all = "camelCase")] 
 pub struct ErrorResponse {
     error: String,
-}
-
-impl Default for QueueServer {
-    fn default() -> Self {
-        Self {
-            sources: HashMap::new(),
-        }
-    }
-
 }
 
 impl Actor for QueueServer {
@@ -164,7 +157,7 @@ impl Handler<AddSourceParams> for QueueServer {
                                                                                       // sample rate
 
         let config = supported_config.into();
-        let source = AudioSource::new(device, config, Vec::new(), ctx.address().clone());
+        let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.add_source(source_name, source);
 
         Ok(self.sources.keys().map(|key| key.to_owned()).collect())
@@ -221,7 +214,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match &msg {
             Ok(ws::Message::Text(text)) => {
-                match serde_json::from_str::<QueueMessage>(&text) {
+                match serde_json::from_str::<QueueMessage>(text) {
                     Ok(QueueMessage::AddQueueItem(msg)) => {
                         let addr = self.server_addr.clone();
                         let fut = async move {

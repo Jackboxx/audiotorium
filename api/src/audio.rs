@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use actix::Addr;
 use cpal::{
@@ -76,12 +76,14 @@ impl AudioSource {
         Ok(())
     }
 
-    fn play(&mut self, path: &PathBuf, source_name: String) -> anyhow::Result<()> {
+    fn play(&mut self, path: &Path, source_name: String) -> anyhow::Result<()> {
         let read_disk_stream =
-            ReadDiskStream::<SymphoniaDecoder>::new(path.clone(), 0, Default::default())?;
+            ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
 
-        let mut processor = AudioProcessor::default();
-        processor.read_disk_stream = Some(read_disk_stream);
+        let mut processor = AudioProcessor {
+            read_disk_stream: Some(read_disk_stream),
+            ..Default::default()
+        };
 
         let addr = self.server_addr.clone();
         let new_stream = self.device.build_output_stream(
@@ -97,6 +99,7 @@ impl AudioSource {
                             error!("failed to play next audio in queue, ERROR: {err}");
                         }
                     }
+                    AudioStreamState::Buffering => {}
                     _ => {}
                 },
                 Err(err) => error!("failed to process audio, ERROR: {err}"),
