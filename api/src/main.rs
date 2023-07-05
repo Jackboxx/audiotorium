@@ -15,6 +15,7 @@ use actix_web_actors::ws;
 use anyhow::anyhow;
 use audio::AudioPlayer;
 use cpal::traits::{DeviceTrait, HostTrait};
+use log::error;
 use serde::{Deserialize, Serialize};
 
 mod audio;
@@ -57,21 +58,21 @@ pub struct AddQueueParams {
 }
 
 #[derive(Debug, Deserialize, Message)]
-#[rtype(result = "anyhow::Result<Vec<String>>")]
+#[rtype(result = "Result<Vec<String>, ErrorResponse>")]
 #[serde(rename_all = "camelCase")] 
 pub struct AddPlayerParams {
     pub player_name: String,
 }
 
 #[derive(Debug, Deserialize, Message)]
-#[rtype(result = "anyhow::Result<()>")]
+#[rtype(result = "Result<(), ErrorResponse>")]
 #[serde(rename_all = "camelCase")] 
 pub struct PlayNextParams {
     pub player_name: String,
 }
 
 #[derive(Debug, Deserialize, Message)]
-#[rtype(result = "anyhow::Result<()>")]
+#[rtype(result = "Result<(), ErrorResponse>")]
 #[serde(rename_all = "camelCase")] 
 pub struct LoopQueueParams {
     pub player_name: String,
@@ -109,7 +110,7 @@ impl Handler<AddQueueParams> for QueueServer {
     fn handle(&mut self, msg: AddQueueParams, _ctx: &mut Self::Context) -> Self::Result {
         let AddQueueParams { player_name, title, url } = msg;
         let Some(player) = self.players.get_mut(&player_name) else {
-            // todo log error
+            error!("no audio player/source with the name {player_name} found, SOURCES: {:?}", self.players.keys());
             return Err(ErrorResponse { error: format!("no audio player/source with the name {player_name} found") });
         };
 
@@ -119,13 +120,13 @@ impl Handler<AddQueueParams> for QueueServer {
 
         if !path_with_ext.try_exists().unwrap_or(false) {
             let Some(str_path) = path.to_str() else { 
-                // todo log error
+                error!("path {path:?} can't be converted to a string");
                 return Err( ErrorResponse { error: format!("failed to construct valid path with title: {title}") } );
             };
 
             if let Err(err) = download_audio(&url, str_path) {
-                // todo log error
-                return Err( ErrorResponse { error: format!("failed to download video with title: {title}, url: {url}; error: {err}") } );
+                error!("failed to download video; URL: {url}, ERROR: {err}");
+                return Err( ErrorResponse { error: format!("failed to download video with title: {title}, url: {url}, ERROR: {err}") } );
             }
         }
 
@@ -135,7 +136,7 @@ impl Handler<AddQueueParams> for QueueServer {
 }
 
 impl Handler<AddPlayerParams> for QueueServer {
-    type Result = anyhow::Result<Vec<String>>;
+    type Result = Result<Vec<String>, ErrorResponse>;
 
     fn handle(&mut self, msg: AddPlayerParams, ctx: &mut Self::Context) -> Self::Result {
         let AddPlayerParams { player_name } = msg;
@@ -163,13 +164,18 @@ impl Handler<AddPlayerParams> for QueueServer {
 }
 
 impl Handler<PlayNextParams> for QueueServer {
-    type Result = anyhow::Result<()>;
+    type Result = Result<(), ErrorResponse>;
 
    fn handle(&mut self, msg: PlayNextParams, _ctx: &mut Self::Context) -> Self::Result {
        let PlayNextParams { player_name } = msg;
 
        if let Some(player) = self.players.get_mut(&player_name) {
-           player.play_next(player_name)?;
+           if let Err(err) = player.play_next(player_name) {
+            return Err(ErrorResponse { error: format!("failed to play next audio, ERROR: {err}") });
+           }
+       } else {
+            error!("no audio player/source with the name {player_name} found, SOURCES: {:?}", self.players.keys());
+            return Err(ErrorResponse { error: format!("no audio player/source with the name {player_name} found") });
        }
 
        Ok(())
@@ -177,13 +183,16 @@ impl Handler<PlayNextParams> for QueueServer {
 }
 
 impl Handler<LoopQueueParams> for QueueServer {
-    type Result = anyhow::Result<()>;
+    type Result = Result<(), ErrorResponse>;
 
    fn handle(&mut self, msg: LoopQueueParams, _ctx: &mut Self::Context) -> Self::Result {
        let LoopQueueParams { player_name, start, end } = msg;
 
        if let Some(player) = self.players.get_mut(&player_name) {
            player.set_loop(Some((start, end)));
+       } else {
+            error!("no audio player/source with the name {player_name} found, SOURCES: {:?}", self.players.keys());
+            return Err(ErrorResponse { error: format!("no audio player/source with the name {player_name} found") });
        }
 
        Ok(())
@@ -198,7 +207,7 @@ impl QueueServer {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
+        match &msg {
             Ok(ws::Message::Text(text)) => {
                 match serde_json::from_str::<QueueMessage>(&text) {
                     Ok(QueueMessage::AddQueueItem(msg)) => self.server_addr.try_send(msg).unwrap(),
@@ -206,15 +215,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                     Ok(QueueMessage::PlayNext(msg))=> self.server_addr.try_send(msg).unwrap(),
                     Ok(QueueMessage::LoopQueue(msg)) => self.server_addr.try_send(msg).unwrap(),
                     Err(err) => {
-                        // todo log err
+                        error!("failed to parse message; MESSAGE: {msg:?}; ERROR: {err}");
+
                         ctx.text(serde_json::to_string(&ErrorResponse {
-                            error: format!("failed to parse message; error: {err}")
+                            error: format!("failed to parse message; ERROR: {err}"),
                         }).unwrap_or(String::from("{}")))
                     }
                 }
             }
             Ok(ws::Message::Close(reason)) => {
-                ctx.close(reason);
+                ctx.close(reason.clone());
                 ctx.stop();
             }
             _ => {}
