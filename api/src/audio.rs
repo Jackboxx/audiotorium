@@ -6,6 +6,7 @@ use cpal::{
     Device, Stream, StreamConfig,
 };
 use creek::{ReadDiskStream, SymphoniaDecoder};
+use log::error;
 
 use crate::{PlayNextParams, QueueServer};
 
@@ -24,7 +25,7 @@ pub enum PlaybackState {
     Paused,
 }
 
-pub struct AudioPlayer {
+pub struct AudioSource {
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
@@ -41,7 +42,7 @@ pub struct AudioProcessor {
     had_cache_miss_last_cycle: bool,
 }
 
-impl AudioPlayer {
+impl AudioSource {
     pub fn new(
         device: Device,
         config: StreamConfig,
@@ -59,7 +60,7 @@ impl AudioPlayer {
         }
     }
 
-    pub fn play_next(&mut self, player_name: String) -> anyhow::Result<()> {
+    pub fn play_next(&mut self, source_name: String) -> anyhow::Result<()> {
         if let Some((start, end)) = self.loop_start_end {
             if self.queue_head > end {
                 self.queue_head = start;
@@ -69,13 +70,13 @@ impl AudioPlayer {
         }
 
         if let Some(audio) = self.current_track() {
-            self.play(&audio, player_name)?;
+            self.play(&audio, source_name)?;
         }
 
         Ok(())
     }
 
-    fn play(&mut self, path: &PathBuf, player_name: String) -> anyhow::Result<()> {
+    fn play(&mut self, path: &PathBuf, source_name: String) -> anyhow::Result<()> {
         let read_disk_stream =
             ReadDiskStream::<SymphoniaDecoder>::new(path.clone(), 0, Default::default())?;
 
@@ -90,16 +91,17 @@ impl AudioPlayer {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        addr.try_send(PlayNextParams {
-                            player_name: player_name.clone(),
-                        })
-                        .unwrap();
+                        if let Err(err) = addr.try_send(PlayNextParams {
+                            source_name: source_name.clone(),
+                        }) {
+                            error!("failed to play next audio in queue, ERROR: {err}");
+                        }
                     }
                     _ => {}
                 },
-                Err(err) => todo!("log error: {err}"),
+                Err(err) => error!("failed to process audio, ERROR: {err}"),
             },
-            move |err| todo!("log error: {err}"),
+            move |err| error!("failed to process audio, ERROR: {err}"),
             None,
         )?;
 
