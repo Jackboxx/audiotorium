@@ -1,11 +1,21 @@
+use std::path::PathBuf;
+
+use actix::Addr;
+use cpal::{
+    traits::{DeviceTrait, StreamTrait},
+    Device, Stream, StreamConfig,
+};
 use creek::{ReadDiskStream, SymphoniaDecoder};
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+use crate::{PlayNext, QueueServer};
+
+#[derive(Default, Debug)]
 pub enum AudioStreamState {
-    #[default]
-    Playing,
+    Playing(PathBuf),
     Buffering,
+    #[default]
     Finished,
+    Error(anyhow::Error),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -15,21 +25,107 @@ pub enum PlaybackState {
     Paused,
 }
 
+pub struct AudioPlayer {
+    device: Device,
+    config: StreamConfig,
+    current_stream: Option<Stream>,
+    queue: Vec<PathBuf>,
+    server_addr: Addr<QueueServer>,
+}
+
 #[derive(Default)]
 pub struct AudioProcessor {
-    pub read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+    read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     playback_state: PlaybackState,
     stream_state: AudioStreamState,
     had_cache_miss_last_cycle: bool,
+}
+
+impl AudioPlayer {
+    pub fn new(
+        device: Device,
+        config: StreamConfig,
+        queue: Vec<PathBuf>,
+        server_addr: Addr<QueueServer>,
+    ) -> Self {
+        Self {
+            device,
+            config,
+            current_stream: None,
+            queue,
+            server_addr,
+        }
+    }
+
+    pub fn play(&mut self, path: &PathBuf) -> anyhow::Result<()> {
+        let read_disk_stream =
+            ReadDiskStream::<SymphoniaDecoder>::new(path.clone(), 0, Default::default()).unwrap();
+
+        let mut processor = AudioProcessor::default();
+        processor.read_disk_stream = Some(read_disk_stream);
+
+        let addr = self.server_addr.clone();
+        let device_name = self.device.name().unwrap(); // this could not match the value passed
+                                                       // through an external websocket update in
+                                                       // the future
+
+        let new_stream = self
+            .device
+            .build_output_stream(
+                &self.config,
+                move |data: &mut [f32], _| {
+                    match processor.try_process(data) {
+                        Err(err) => processor.stream_state = AudioStreamState::Error(err),
+                        _ => {}
+                    }
+
+                    match processor.stream_state {
+                        AudioStreamState::Finished => {
+                            addr.do_send(PlayNext {
+                                player_name: device_name.clone(),
+                            });
+                        }
+                        // AudioStreamState::Error(err) => {
+                        //     addr.send(todo!("err {err}"));
+                        // }
+                        _ => {}
+                    }
+                },
+                move |err| todo!("log error: {err}"),
+                None,
+            )
+            .unwrap();
+
+        new_stream.play().unwrap();
+        self.current_stream = Some(new_stream);
+        Ok(())
+    }
+
+    pub fn push_to_queue(&mut self, path: PathBuf) {
+        self.queue.push(path);
+    }
+
+    pub fn queue(&self) -> &[PathBuf] {
+        &self.queue
+    }
+
+    /// removes the first element of the queue and returns it
+    ///
+    /// returns `None` if the queue is empty
+    pub fn pop_first(&mut self) -> Option<PathBuf> {
+        if self.queue.is_empty() {
+            None
+        } else {
+            Some(self.queue.remove(0))
+        }
+    }
 }
 
 impl AudioProcessor {
     pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<()> {
         let mut cache_missed_this_cycle = false;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
-            if self.playback_state == PlaybackState::Paused
-                || self.stream_state == AudioStreamState::Finished
-            {
+            if self.playback_state == PlaybackState::Paused {
                 silence(data);
                 return Ok(());
             }
