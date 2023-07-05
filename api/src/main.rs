@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
-use std::time::Duration;
 use std::env;
 use std::path::Path;
 use std::process::Command;
-use std::{fs::File, path::PathBuf};
+use std::path::PathBuf;
 
 use actix::{Actor, ActorContext, Message, StreamHandler, Addr, Context, Handler, Recipient, AsyncContext};
 use actix_cors::Cors;
@@ -13,9 +12,13 @@ use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_web_actors::ws;
 
 use anyhow::anyhow;
-use cpal::traits::{DeviceTrait, HostTrait};
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use audio::AudioProcessor;
+use cpal::{SampleRate, Stream, Device, StreamConfig};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use creek::{ReadDiskStream, SymphoniaDecoder};
 use serde::Deserialize;
+
+mod audio;
 
 static AUDIO_DIR: &str = "audio";
 
@@ -25,9 +28,8 @@ struct AppData {
 
 struct QueueServer {
     queue: AudioQueue,
-    sink: Sink,
+    devices: Vec<(Device, StreamConfig, Option<Stream>)>,
     sessions: Vec<Recipient<StringMessage>>,
-    _stream_handle: OutputStreamHandle,
 }
 
 struct QueueSession {
@@ -57,17 +59,24 @@ struct AddQueueParams {
 
 impl Default for QueueServer {
     fn default() -> Self {
-        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&stream_handle).unwrap();
+        let host = cpal::default_host();
+        let device = host.default_output_device().expect("no output device available");
+        let mut supported_configs_range = device.supported_output_configs()
+            .expect("error while querying configs");
 
-        sink.set_volume(1.0);
-        sink.set_speed(1.0);
+        let supported_config = supported_configs_range.next()
+            .expect("no supported config?!").with_sample_rate(SampleRate(16384 * 6)); // pretty close
+                                                                                      // but should
+                                                                                      // definitely look
+                                                                                      // into getting
+                                                                                      // the proper
+                                                                                      // sample rate
 
+        let config = supported_config.into();
         Self {
             queue: AudioQueue::default(),
-            sink,
+            devices: vec![(device, config, None)],
             sessions: Vec::new(),
-            _stream_handle: stream_handle,
         }
     }
 }
@@ -82,7 +91,7 @@ impl Actor for QueueServer {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.run_interval(Duration::from_millis(500), |actor, _ctx| actor.update());
+        // ctx.run_interval(Duration::from_millis(500), |actor, _ctx| actor.update());
     }
 }
 
@@ -92,7 +101,6 @@ impl Actor for QueueSession {
 
 impl Handler<AddQueueParams> for QueueServer {
     type Result = anyhow::Result<Vec<PathBuf>>;
-
 
     fn handle(&mut self, msg: AddQueueParams, _ctx: &mut Self::Context) -> Self::Result {
         let AddQueueParams { title, url } = msg;
@@ -106,43 +114,39 @@ impl Handler<AddQueueParams> for QueueServer {
                 return Err(anyhow!("failed to construct valid path with title: {title}"));
             };
 
-            match download_audio(&url, str_path) {
-                Err(err) => {
-                    return Err(anyhow!("{err}"));
-                }
-                _ => {}
-            }
+            download_audio(&url, str_path).unwrap();
         }
 
-        self.queue.push(&self.sink, path)?;
+        self.push_to_queue(path_with_ext)?;
         Ok(self.queue.queue.clone())
     }
 }
 
 impl QueueServer {
-    fn update(&mut self) {
-        while self.sink.len() < self.queue.queue.len() {
-            self.queue.queue.remove(0);
+    fn push_to_queue(&mut self, path: PathBuf) -> anyhow::Result<()> {
+        for dev in self.devices.iter_mut() {
+            let read_disk_stream = ReadDiskStream::<SymphoniaDecoder>::new(
+                path.clone(),
+                0,
+                Default::default(),
+            ).unwrap();
 
-            for session in &self.sessions {
-                session.do_send(StringMessage(serde_json::to_string(&self.queue.queue).unwrap()))
-            }
+            let mut processor = AudioProcessor::default();
+            processor.read_disk_stream = Some(read_disk_stream);
+
+            let new_stream = dev.0.build_output_stream(
+                &dev.1,
+                move |data: &mut [f32], _| processor.try_process(data).unwrap(),
+                move |err| eprintln!("{err}"),
+                None 
+            ).unwrap();
+
+            new_stream.play().unwrap();
+            dev.2 = Some(new_stream);
         }
 
-        if self.queue.queue.len() < self.sink.len() {
-            panic!("sink should not have more elements then queue")
-        }
-    }
-}
 
-impl AudioQueue {
-    fn push(&mut self, sink: &Sink, path: PathBuf) -> anyhow::Result<()> {
-        println!("adding new");
-        let audio = get_audio_from_file(&path)?;
-        println!("read file");
-        sink.append(audio);
-        self.queue.push(path);
-        println!("added new");
+        self.queue.queue.push(path);
         Ok(())
     }
 }
@@ -184,11 +188,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
             _ => {}
         }
     }
-}
-
-fn get_audio_from_file(path: &PathBuf) -> anyhow::Result<Decoder<File>> {
-    let file = File::open(&path)?;
-    Ok(Decoder::new(file)?)
 }
 
 fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
