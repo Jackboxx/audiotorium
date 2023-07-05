@@ -9,14 +9,13 @@ use std::path::PathBuf;
 use actix::{Actor, ActorContext, Message, StreamHandler, Addr, Context, Handler, Recipient, AsyncContext};
 use actix_cors::Cors;
 use actix_web::web::{self, Data};
-use actix_web::{get, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, App, HttpRequest, HttpServer, Responder};
 use actix_web_actors::ws;
 
 use anyhow::anyhow;
 use audio::AudioPlayer;
-use cpal::SampleRate;
 use cpal::traits::{DeviceTrait, HostTrait};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 mod audio;
 
@@ -44,11 +43,12 @@ pub struct StringMessage(pub String);
 pub enum QueueMessage {
     AddQueueItem(AddQueueParams),
     AddPlayer(AddPlayerParams),
-    PlayNext(PlayNext)
+    PlayNext(PlayNextParams),
+    LoopQueue(LoopQueueParams),
 }
 
 #[derive(Debug, Deserialize, Message)]
-#[rtype(result = "anyhow::Result<Vec<PathBuf>>")]
+#[rtype(result = "Result<Vec<PathBuf>, ErrorResponse>")]
 #[serde(rename_all = "camelCase")] 
 pub struct AddQueueParams {
     pub player_name: String,
@@ -66,8 +66,23 @@ pub struct AddPlayerParams {
 #[derive(Debug, Deserialize, Message)]
 #[rtype(result = "anyhow::Result<()>")]
 #[serde(rename_all = "camelCase")] 
-pub struct PlayNext {
+pub struct PlayNextParams {
     pub player_name: String,
+}
+
+#[derive(Debug, Deserialize, Message)]
+#[rtype(result = "anyhow::Result<()>")]
+#[serde(rename_all = "camelCase")] 
+pub struct LoopQueueParams {
+    pub player_name: String,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")] 
+pub struct ErrorResponse {
+    error: String,
 }
 
 impl Default for QueueServer {
@@ -89,11 +104,14 @@ impl Actor for QueueSession {
 }
 
 impl Handler<AddQueueParams> for QueueServer {
-    type Result = anyhow::Result<Vec<PathBuf>>;
+    type Result = Result<Vec<PathBuf>, ErrorResponse>;
 
     fn handle(&mut self, msg: AddQueueParams, _ctx: &mut Self::Context) -> Self::Result {
         let AddQueueParams { player_name, title, url } = msg;
-        let player = self.players.get_mut(&player_name).unwrap();
+        let Some(player) = self.players.get_mut(&player_name) else {
+            // todo log error
+            return Err(ErrorResponse { error: format!("no audio player/source with the name {player_name} found") });
+        };
 
         let path = Path::new(AUDIO_DIR).join(&title);
         let mut path_with_ext = path.clone();
@@ -101,10 +119,14 @@ impl Handler<AddQueueParams> for QueueServer {
 
         if !path_with_ext.try_exists().unwrap_or(false) {
             let Some(str_path) = path.to_str() else { 
-                return Err(anyhow!("failed to construct valid path with title: {title}"));
+                // todo log error
+                return Err( ErrorResponse { error: format!("failed to construct valid path with title: {title}") } );
             };
 
-            download_audio(&url, str_path).unwrap();
+            if let Err(err) = download_audio(&url, str_path) {
+                // todo log error
+                return Err( ErrorResponse { error: format!("failed to download video with title: {title}, url: {url}; error: {err}") } );
+            }
         }
 
         player.push_to_queue(path_with_ext);
@@ -115,17 +137,17 @@ impl Handler<AddQueueParams> for QueueServer {
 impl Handler<AddPlayerParams> for QueueServer {
     type Result = anyhow::Result<Vec<String>>;
 
-    fn handle(&mut self, _msg: AddPlayerParams, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AddPlayerParams, ctx: &mut Self::Context) -> Self::Result {
+        let AddPlayerParams { player_name } = msg;
+
         let host = cpal::default_host();
         let device = host.default_output_device().expect("no output device available");
-
-        dbg!(device.name().unwrap());
 
         let mut supported_configs_range = device.supported_output_configs()
             .expect("error while querying configs");
 
         let supported_config = supported_configs_range.next()
-            .expect("no supported config?!").with_sample_rate(SampleRate(16384 * 6)); // pretty close
+            .expect("no supported config?!").with_max_sample_rate();
                                                                                       // but should
                                                                                       // definitely look
                                                                                       // into getting
@@ -133,22 +155,35 @@ impl Handler<AddPlayerParams> for QueueServer {
                                                                                       // sample rate
 
         let config = supported_config.into();
-        self.add_player(device.name().unwrap(), AudioPlayer::new(device, config, Vec::new(), ctx.address().clone()));
+        let player = AudioPlayer::new(device, config, Vec::new(), ctx.address().clone());
+        self.add_player(player_name, player);
 
         Ok(self.players.keys().map(|key| key.to_owned()).collect())
    } 
 }
 
-impl Handler<PlayNext> for QueueServer {
+impl Handler<PlayNextParams> for QueueServer {
     type Result = anyhow::Result<()>;
 
-   fn handle(&mut self, msg: PlayNext, ctx: &mut Self::Context) -> Self::Result {
-       let PlayNext { player_name } = msg;
+   fn handle(&mut self, msg: PlayNextParams, _ctx: &mut Self::Context) -> Self::Result {
+       let PlayNextParams { player_name } = msg;
 
        if let Some(player) = self.players.get_mut(&player_name) {
-           if let Some(first) = player.pop_first() {
-               player.play(&first)?;
-           }
+           player.play_next(player_name)?;
+       }
+
+       Ok(())
+   } 
+}
+
+impl Handler<LoopQueueParams> for QueueServer {
+    type Result = anyhow::Result<()>;
+
+   fn handle(&mut self, msg: LoopQueueParams, _ctx: &mut Self::Context) -> Self::Result {
+       let LoopQueueParams { player_name, start, end } = msg;
+
+       if let Some(player) = self.players.get_mut(&player_name) {
+           player.set_loop(Some((start, end)));
        }
 
        Ok(())
@@ -165,10 +200,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => {
-                match serde_json::from_str::<QueueMessage>(&text).unwrap() {
-                    QueueMessage::AddQueueItem(msg) => self.server_addr.try_send(msg).unwrap(),
-                    QueueMessage::AddPlayer(msg) => self.server_addr.try_send(msg).unwrap(),
-                    QueueMessage::PlayNext(msg) => self.server_addr.try_send(msg).unwrap(),
+                match serde_json::from_str::<QueueMessage>(&text) {
+                    Ok(QueueMessage::AddQueueItem(msg)) => self.server_addr.try_send(msg).unwrap(),
+                    Ok(QueueMessage::AddPlayer(msg)) => self.server_addr.try_send(msg).unwrap(),
+                    Ok(QueueMessage::PlayNext(msg))=> self.server_addr.try_send(msg).unwrap(),
+                    Ok(QueueMessage::LoopQueue(msg)) => self.server_addr.try_send(msg).unwrap(),
+                    Err(err) => {
+                        // todo log err
+                        ctx.text(serde_json::to_string(&ErrorResponse {
+                            error: format!("failed to parse message; error: {err}")
+                        }).unwrap_or(String::from("{}")))
+                    }
                 }
             }
             Ok(ws::Message::Close(reason)) => {
@@ -202,14 +244,6 @@ fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[get("/sources")]
-async fn get_sources() -> impl Responder {
-    let host = cpal::default_host();
-    let devices = host.output_devices().unwrap();
-
-    HttpResponse::Ok().json(devices.flat_map(|dev| dev.name()).collect::<Vec<_>>())
-}
-
 #[get("/queue")]
 async fn get_con_to_queue(
     data: Data<AppData>,
@@ -237,7 +271,6 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(data.clone())
             .wrap(cors)
-            .service(get_sources)
             .service(get_con_to_queue)
     })
     .bind(("127.0.0.1", 50051))?

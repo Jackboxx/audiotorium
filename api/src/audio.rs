@@ -7,15 +7,14 @@ use cpal::{
 };
 use creek::{ReadDiskStream, SymphoniaDecoder};
 
-use crate::{PlayNext, QueueServer};
+use crate::{PlayNextParams, QueueServer};
 
 #[derive(Default, Debug)]
 pub enum AudioStreamState {
-    Playing(PathBuf),
-    Buffering,
     #[default]
+    Playing,
+    Buffering,
     Finished,
-    Error(anyhow::Error),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -31,13 +30,14 @@ pub struct AudioPlayer {
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
     server_addr: Addr<QueueServer>,
+    queue_head: usize,
+    loop_start_end: Option<(usize, usize)>,
 }
 
 #[derive(Default)]
 pub struct AudioProcessor {
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     playback_state: PlaybackState,
-    stream_state: AudioStreamState,
     had_cache_miss_last_cycle: bool,
 }
 
@@ -54,51 +54,77 @@ impl AudioPlayer {
             current_stream: None,
             queue,
             server_addr,
+            queue_head: 0,
+            loop_start_end: None,
         }
     }
 
-    pub fn play(&mut self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn play_next(&mut self, player_name: String) -> anyhow::Result<()> {
+        if let Some((start, end)) = self.loop_start_end {
+            if self.queue_head > end {
+                self.queue_head = start;
+            }
+        } else if self.queue_head >= self.queue.len() {
+            self.queue_head = 0;
+        }
+
+        if let Some(audio) = self.current_track() {
+            self.play(&audio, player_name)?;
+        }
+
+        Ok(())
+    }
+
+    fn play(&mut self, path: &PathBuf, player_name: String) -> anyhow::Result<()> {
         let read_disk_stream =
-            ReadDiskStream::<SymphoniaDecoder>::new(path.clone(), 0, Default::default()).unwrap();
+            ReadDiskStream::<SymphoniaDecoder>::new(path.clone(), 0, Default::default())?;
 
         let mut processor = AudioProcessor::default();
         processor.read_disk_stream = Some(read_disk_stream);
 
         let addr = self.server_addr.clone();
-        let device_name = self.device.name().unwrap(); // this could not match the value passed
-                                                       // through an external websocket update in
-                                                       // the future
+        let new_stream = self.device.build_output_stream(
+            &self.config,
+            move |data: &mut [f32], _| match processor.try_process(data) {
+                Ok(state) => match state {
+                    AudioStreamState::Finished => {
+                        processor.read_disk_stream = None;
 
-        let new_stream = self
-            .device
-            .build_output_stream(
-                &self.config,
-                move |data: &mut [f32], _| {
-                    match processor.try_process(data) {
-                        Err(err) => processor.stream_state = AudioStreamState::Error(err),
-                        _ => {}
+                        addr.try_send(PlayNextParams {
+                            player_name: player_name.clone(),
+                        })
+                        .unwrap();
                     }
-
-                    match processor.stream_state {
-                        AudioStreamState::Finished => {
-                            addr.do_send(PlayNext {
-                                player_name: device_name.clone(),
-                            });
-                        }
-                        // AudioStreamState::Error(err) => {
-                        //     addr.send(todo!("err {err}"));
-                        // }
-                        _ => {}
-                    }
+                    _ => {}
                 },
-                move |err| todo!("log error: {err}"),
-                None,
-            )
-            .unwrap();
+                Err(err) => todo!("log error: {err}"),
+            },
+            move |err| todo!("log error: {err}"),
+            None,
+        )?;
 
-        new_stream.play().unwrap();
+        new_stream.play()?;
         self.current_stream = Some(new_stream);
         Ok(())
+    }
+
+    /// sets the loop `start` and `end`.
+    ///
+    /// values are clamped between `0` and `queue.len()`.
+    pub fn set_loop(&mut self, loop_start_end: Option<(usize, usize)>) {
+        self.loop_start_end = loop_start_end
+            .map(|(a, b)| (a.clamp(0, self.queue.len()), b.clamp(0, self.queue.len())));
+    }
+
+    /// gets the audio at the current `queue_head` and increments the `queue_head` by 1.
+    pub fn current_track(&mut self) -> Option<PathBuf> {
+        let audio = self
+            .queue
+            .get(self.queue_head)
+            .map(|audio| audio.to_owned());
+
+        self.queue_head += 1;
+        audio
     }
 
     pub fn push_to_queue(&mut self, path: PathBuf) {
@@ -108,30 +134,20 @@ impl AudioPlayer {
     pub fn queue(&self) -> &[PathBuf] {
         &self.queue
     }
-
-    /// removes the first element of the queue and returns it
-    ///
-    /// returns `None` if the queue is empty
-    pub fn pop_first(&mut self) -> Option<PathBuf> {
-        if self.queue.is_empty() {
-            None
-        } else {
-            Some(self.queue.remove(0))
-        }
-    }
 }
 
 impl AudioProcessor {
-    pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<()> {
+    pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
         let mut cache_missed_this_cycle = false;
+        let mut stream_state = AudioStreamState::Playing;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
             if self.playback_state == PlaybackState::Paused {
                 silence(data);
-                return Ok(());
+                return Ok(AudioStreamState::Playing);
             }
 
             if !read_disk_stream.is_ready()? {
-                self.stream_state = AudioStreamState::Buffering;
+                stream_state = AudioStreamState::Buffering;
                 cache_missed_this_cycle = true;
             }
 
@@ -166,7 +182,8 @@ impl AudioProcessor {
                     }
 
                     data = &mut data[to_end_of_loop * 2..];
-                    self.stream_state = AudioStreamState::Finished;
+                    stream_state = AudioStreamState::Finished;
+                    break;
                 } else {
                     if read_data.num_channels() == 1 {
                         let ch = read_data.read_channel(0);
@@ -186,6 +203,7 @@ impl AudioProcessor {
                     }
 
                     data = &mut data[read_data.num_frames() * 2..];
+                    stream_state = AudioStreamState::Playing;
                 }
             }
         } else {
@@ -203,7 +221,7 @@ impl AudioProcessor {
         }
 
         self.had_cache_miss_last_cycle = cache_missed_this_cycle;
-        Ok(())
+        Ok(stream_state)
     }
 }
 
