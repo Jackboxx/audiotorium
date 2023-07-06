@@ -59,6 +59,8 @@ impl Actor for QueueSession {
     }
 
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
+        info!("'QueueSession' stopping, ID: {}", self.id);
+
         self.server_addr.do_send(Disconnect { id: self.id });
         Running::Stop
     }

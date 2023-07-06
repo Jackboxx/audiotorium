@@ -42,7 +42,7 @@ pub struct SendClientQueueInfoResponseParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QueueServerMessage {
     AddQueueItem(AddQueueParams),
     AddSource(AddSourceParams),
@@ -53,7 +53,7 @@ pub enum QueueServerMessage {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QueueServerMessageResponse {
     AddQueueItemResponse(AddQueueResponseParams),
     AddSourceResponse(AddSourceResponseParams),
