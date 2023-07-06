@@ -43,13 +43,29 @@ impl Actor for QueueSession {
             .into_actor(self)
             .then(|res, act, ctx| {
                 match res {
-                    Ok(res) => {
-                        info!("'QueueSession' connected, ID: {res}");
-                        act.id = res
-                    }
+                    Ok(res) => match res {
+                        Ok(params) => {
+                            info!("'QueueSession' connected");
+                            act.id = params.id;
+
+                            ctx.text(
+                                serde_json::to_string(
+                                    &QueueServerMessageResponse::SessionConnectedResponse(params),
+                                )
+                                .unwrap_or("[]".to_owned()),
+                            );
+                        }
+                        Err(err) => {
+                            error!(
+                                "'QueueSession' failed to connect to 'QueueServer', ERROR: {err:?}"
+                            );
+                            ctx.stop();
+                        }
+                    },
+
                     Err(err) => {
                         error!("'QueueSession' failed to connect to 'QueueServer', ERROR: {err}");
-                        ctx.stop()
+                        ctx.stop();
                     }
                 }
 
@@ -86,6 +102,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                                 Ok(resp) => match resp {
                                     Ok(params) => {
                                         ctx.text(serde_json::to_string(&QueueServerMessageResponse::AddQueueItemResponse(params)).unwrap_or("[]".to_owned()));
+                                    }
+                                    Err(err_resp) => {
+                                        ctx.text(serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()));
+                                    }
+                                },
+                                Err(err) => {
+                                    error!("queue server didn't responde to 'AddQueueItem' message, ERROR: {err}");
+                                    ctx.text(serde_json::to_string(&ErrorResponse {
+                                        error: format!("server failed to responde to message, ERROR: {err}")
+                                    }).unwrap_or("{}".to_owned()));
+                                }
+                            }
+                        });
+
+                    ctx.spawn(fut);
+                }
+                Ok(QueueServerMessage::ReadQueueItems(msg)) => {
+                    let addr = self.server_addr.clone();
+                    let fut = async move {
+                            addr.send(msg).await
+                        }.into_actor(self).map(|result, _, ctx| {
+                            match result {
+                                Ok(resp) => match resp {
+                                    Ok(params) => {
+                                        ctx.text(serde_json::to_string(&QueueServerMessageResponse::ReadQueueItemsResponse(params)).unwrap_or("[]".to_owned()));
                                     }
                                     Err(err_resp) => {
                                         ctx.text(serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()));

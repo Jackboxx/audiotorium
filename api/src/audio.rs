@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 use actix::Addr;
 use anyhow::anyhow;
@@ -42,11 +45,24 @@ pub struct AudioSource {
     playback_info: PlaybackInfo,
 }
 
-#[derive(Default)]
 pub struct AudioProcessor {
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     playback_state: PlaybackState,
     had_cache_miss_last_cycle: bool,
+    last_msg_sent_at: Instant,
+    hard_rate_limit: Duration,
+}
+
+impl Default for AudioProcessor {
+    fn default() -> Self {
+        Self {
+            read_disk_stream: None,
+            playback_state: PlaybackState::default(),
+            had_cache_miss_last_cycle: false,
+            last_msg_sent_at: Instant::now(),
+            hard_rate_limit: Duration::from_millis(100),
+        }
+    }
 }
 
 impl AudioSource {
@@ -172,8 +188,16 @@ impl AudioSource {
                     }
                     AudioStreamState::Buffering => {}
                     AudioStreamState::Playing(info) => {
-                        if let Err(err) = addr.try_send(SendClientQueueInfoParams { info }) {
-                            error!("failed to send info for source {source_name}, ERROR: {err}");
+                        // prevent message spam from filling up mailbox of the server
+                        if Instant::now().duration_since(processor.last_msg_sent_at)
+                            > processor.hard_rate_limit
+                        {
+                            processor.last_msg_sent_at = Instant::now();
+                            if let Err(err) = addr.try_send(SendClientQueueInfoParams { info }) {
+                                error!(
+                                    "failed to send info for source {source_name}, ERROR: {err}"
+                                );
+                            }
                         }
                     }
                 },

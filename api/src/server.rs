@@ -17,9 +17,15 @@ pub struct QueueServer {
 }
 
 #[derive(Debug, Clone, Message)]
-#[rtype(result = "usize")]
+#[rtype(result = "Result<ConnectResponse, ()>")]
 pub struct Connect {
     pub addr: Recipient<PassThroughtMessage>
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectResponse {
+    pub id: usize,
+    pub sources: Vec<String>,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -45,6 +51,7 @@ pub struct SendClientQueueInfoResponseParams {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QueueServerMessage {
     AddQueueItem(AddQueueParams),
+    ReadQueueItems(ReadQueueParams),
     AddSource(AddSourceParams),
     PlayNext(PlayNextParams),
     PlayPrevious(PlayPreviousParams),
@@ -55,7 +62,9 @@ pub enum QueueServerMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QueueServerMessageResponse {
+    SessionConnectedResponse(ConnectResponse),
     AddQueueItemResponse(AddQueueResponseParams),
+    ReadQueueItemsResponse(ReadQueueResponseParams),
     AddSourceResponse(AddSourceResponseParams),
     PlayNextResponse(PlayNextResponseParams),
     PlayPreviousResponse(PlayPreviousResponseParams),
@@ -75,6 +84,18 @@ pub struct AddQueueParams {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AddQueueResponseParams {
+    queue: Vec<String>
+}
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<ReadQueueResponseParams, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct ReadQueueParams {
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReadQueueResponseParams {
     queue: Vec<String>
 }
 
@@ -147,18 +168,28 @@ impl Actor for QueueServer {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        // check this if weird shit happens just trying stuff here
+        ctx.set_mailbox_capacity(64);
         info!("stared new 'QueueServer', CONTEXT: {ctx:?}");
     }
 }
 
 impl Handler<Connect> for QueueServer {
-    type Result = usize;
+    type Result = Result<ConnectResponse, ()>;
     fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
         let Connect { addr } = msg;
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
 
         self.sessions.insert(id, addr);
-        id
+
+        Ok(ConnectResponse { id, 
+            sources: self
+                .sources
+                .keys()
+                .into_iter()
+                .map(|key| key.to_owned())
+                .collect()
+        })
     }
 }
 
@@ -235,6 +266,31 @@ impl Handler<AddQueueParams> for QueueServer {
             ).collect()
         })
     }
+}
+
+impl Handler<ReadQueueParams> for QueueServer {
+   type Result = Result<ReadQueueResponseParams, ErrorResponse>; 
+   fn handle(&mut self, msg: ReadQueueParams, _ctx: &mut Self::Context) -> Self::Result {
+        info!("'ReadQueueItems' handler received a message, MESSAGE: {msg:?}");
+
+        let ReadQueueParams { source_name } = msg;
+        if let Some(source) = self.sources.get(&source_name) {
+            Ok(ReadQueueResponseParams { queue: source
+            .queue()
+            .into_iter()
+            .map(|path| path
+                .file_stem()
+                .unwrap_or(OsStr::new(""))
+                .to_str()
+                .map(|str| str.to_owned())
+                .unwrap_or(String::new())
+            ).collect()
+        })
+       } else {
+            error!("no audio source with the name {source_name} found, SOURCES: {:?}", self.sources.keys());
+            Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") })
+       }
+   }
 }
 
 impl Handler<AddSourceParams> for QueueServer {
