@@ -240,6 +240,35 @@ impl AudioSource {
         Ok(())
     }
 
+    pub fn move_queue_item(&mut self, old: usize, new: usize) {
+        if old == new {
+            return;
+        } else if old > new {
+            for i in (new..old).rev() {
+                self.queue.swap(i, i + 1);
+
+                if i + 1 == self.queue_head {
+                    self.update_queue_head(i);
+                }
+                if i == self.queue_head {
+                    self.update_queue_head(i + 1);
+                }
+            }
+        } else {
+            for i in old..new {
+                self.queue.swap(i, i + 1);
+
+                if i + 1 == self.queue_head {
+                    self.update_queue_head(i);
+                }
+
+                if i == self.queue_head {
+                    self.update_queue_head(i + 1);
+                }
+            }
+        }
+    }
+
     /// updates `queue_head` and `playback_info`
     pub fn update_queue_head(&mut self, value: usize) {
         self.playback_info.current_head_index = value;

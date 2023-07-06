@@ -52,6 +52,7 @@ pub struct SendClientQueueInfoResponseParams {
 pub enum QueueServerMessage {
     AddQueueItem(AddQueueParams),
     ReadQueueItems(ReadQueueParams),
+    MoveQueueItem(MoveQueueItemParams),
     AddSource(AddSourceParams),
     PlayNext(PlayNextParams),
     PlayPrevious(PlayPreviousParams),
@@ -65,6 +66,7 @@ pub enum QueueServerMessageResponse {
     SessionConnectedResponse(ConnectResponse),
     AddQueueItemResponse(AddQueueResponseParams),
     ReadQueueItemsResponse(ReadQueueResponseParams),
+    MoveQueueItemResponse(MoveQueueItemResponseParams),
     AddSourceResponse(AddSourceResponseParams),
     PlayNextResponse(PlayNextResponseParams),
     PlayPreviousResponse(PlayPreviousResponseParams),
@@ -96,6 +98,20 @@ pub struct ReadQueueParams {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReadQueueResponseParams {
+    queue: Vec<String>
+}
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<MoveQueueItemResponseParams, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct MoveQueueItemParams {
+    source_name: String, 
+    old_pos: usize,
+    new_pos: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoveQueueItemResponseParams {
     queue: Vec<String>
 }
 
@@ -293,6 +309,39 @@ impl Handler<ReadQueueParams> for QueueServer {
    }
 }
 
+impl Handler<MoveQueueItemParams> for QueueServer  {
+   type Result = Result<MoveQueueItemResponseParams, ErrorResponse>; 
+   fn handle(&mut self, msg: MoveQueueItemParams, _ctx: &mut Self::Context) -> Self::Result {
+        info!("'MoveQueueItem' handler received a message, MESSAGE: {msg:?}");
+
+        let MoveQueueItemParams { source_name, old_pos, new_pos } = msg;
+
+        if let Some(source) = self.sources.get_mut(&source_name) {
+            if old_pos >= source.queue().len() || new_pos < 0 {
+                error!("'MoveQueueItem' params out of bounds");
+                return Err(ErrorResponse { error: format!("'oldPos' and 'newPos' out of bounds") });
+            } 
+
+            source.move_queue_item(old_pos, new_pos);
+            Ok(MoveQueueItemResponseParams { 
+                queue: source
+                   .queue()
+                   .into_iter()
+                   .map(|path| path
+                        .file_stem()
+                        .unwrap_or(OsStr::new(""))
+                        .to_str()
+                        .map(|str| str.to_owned())
+                        .unwrap_or(String::new())
+                    ).collect()
+                })
+        } else {
+            error!("no audio source with the name {source_name} found, SOURCES: {:?}", self.sources.keys());
+            Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") })
+        }        
+    }        
+}
+
 impl Handler<AddSourceParams> for QueueServer {
     type Result = Result<AddSourceResponseParams, ErrorResponse>;
 
@@ -388,7 +437,6 @@ impl Handler<PlaySelectedParams> for QueueServer {
        Ok(PlaySelectedResponseParams)
    } 
 }
-
 
 impl Handler<LoopQueueParams> for QueueServer {
     type Result = Result<LoopQueueResponseParams, ErrorResponse>;
