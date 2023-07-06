@@ -317,7 +317,7 @@ impl Handler<MoveQueueItemParams> for QueueServer  {
         let MoveQueueItemParams { source_name, old_pos, new_pos } = msg;
 
         if let Some(source) = self.sources.get_mut(&source_name) {
-            if old_pos >= source.queue().len() || new_pos < 0 {
+            if old_pos >= source.queue().len() {
                 error!("'MoveQueueItem' params out of bounds");
                 return Err(ErrorResponse { error: format!("'oldPos' and 'newPos' out of bounds") });
             } 

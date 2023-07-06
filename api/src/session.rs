@@ -143,6 +143,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                     ctx.spawn(fut);
                 }
+                Ok(QueueServerMessage::MoveQueueItem(msg)) => {
+                    let addr = self.server_addr.clone();
+                    let fut = async move {
+                            addr.send(msg).await
+                        }.into_actor(self).map(|result, _, ctx| {
+                            match result {
+                                Ok(resp) => match resp {
+                                    Ok(params) => {
+                                        ctx.text(serde_json::to_string(&QueueServerMessageResponse::MoveQueueItemResponse(params)).unwrap_or("[]".to_owned()));
+                                    }
+                                    Err(err_resp) => {
+                                        ctx.text(serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()));
+                                    }
+                                },
+                                Err(err) => {
+                                    error!("queue server didn't responde to 'AddQueueItem' message, ERROR: {err}");
+                                    ctx.text(serde_json::to_string(&ErrorResponse {
+                                        error: format!("server failed to responde to message, ERROR: {err}")
+                                    }).unwrap_or("{}".to_owned()));
+                                }
+                            }
+                        });
+
+                    ctx.spawn(fut);
+                }
                 Ok(QueueServerMessage::AddSource(msg)) => {
                     let addr = self.server_addr.clone();
                     let fut = async move {
