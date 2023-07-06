@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use actix::Addr;
+use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     Device, Stream, StreamConfig,
@@ -8,7 +9,7 @@ use cpal::{
 use creek::{ReadDiskStream, SymphoniaDecoder};
 use log::error;
 
-use crate::{PlayNextParams, QueueServer};
+use crate::server::{LoopBounds, PlayNextParams, QueueServer};
 
 #[derive(Default, Debug)]
 pub enum AudioStreamState {
@@ -61,6 +62,12 @@ impl AudioSource {
     }
 
     pub fn play_next(&mut self, source_name: String) -> anyhow::Result<()> {
+        if self.queue.is_empty() {
+            return Err(anyhow!("queue is empty"));
+        }
+
+        self.queue_head += 1;
+
         if let Some((start, end)) = self.loop_start_end {
             if self.queue_head > end {
                 self.queue_head = start;
@@ -69,8 +76,60 @@ impl AudioSource {
             self.queue_head = 0;
         }
 
-        if let Some(audio) = self.current_track() {
-            self.play(&audio, source_name)?;
+        if let Some(path) = self.get_path() {
+            self.play(&path, source_name)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn play_prev(&mut self, source_name: String) -> anyhow::Result<()> {
+        if self.queue.is_empty() {
+            return Err(anyhow!("queue is empty"));
+        }
+
+        // casting could technically be a problem if we have very large queues like 2^32
+        // but in all realistic situations this should be fine
+        //
+        // !!! CHECK THIS IF YOU ARE HAVING STRANGE ERRORS IN EXTREME CASES !!!
+        let mut fake_queue_head = self.queue_head as isize - 1;
+
+        if let Some((start, end)) = self.loop_start_end {
+            if fake_queue_head > end as isize {
+                fake_queue_head = start as isize;
+            } else if fake_queue_head < start as isize {
+                fake_queue_head = end as isize;
+            }
+        } else if fake_queue_head < 0 {
+            fake_queue_head = self.queue.len() as isize - 1;
+        }
+
+        self.queue_head = fake_queue_head as usize;
+
+        if let Some(path) = self.get_path() {
+            self.play(&path, source_name)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn play_selected(&mut self, index: usize, source_name: String) -> anyhow::Result<()> {
+        if self.queue.is_empty() {
+            return Err(anyhow!("queue is empty"));
+        }
+
+        if index == self.queue_head {
+            return Ok(());
+        }
+
+        self.queue_head = if let Some((start, end)) = self.loop_start_end {
+            index.clamp(start, end)
+        } else {
+            index.clamp(0, self.queue.len() - 1)
+        };
+
+        if let Some(path) = self.get_path() {
+            self.play(&path, source_name)?;
         }
 
         Ok(())
@@ -116,24 +175,29 @@ impl AudioSource {
     /// sets the loop `start` and `end`.
     ///
     /// values are clamped between `0` and `queue.len()`.
-    pub fn set_loop(&mut self, loop_start_end: Option<(usize, usize)>) {
-        self.loop_start_end = loop_start_end
-            .map(|(a, b)| (a.clamp(0, self.queue.len()), b.clamp(0, self.queue.len())));
+    pub fn set_loop(&mut self, loop_start_end: Option<LoopBounds>) {
+        self.loop_start_end = loop_start_end.map(|LoopBounds { start, end }| {
+            (
+                start.clamp(0, self.queue.len()),
+                end.clamp(0, self.queue.len()),
+            )
+        });
     }
 
-    /// gets the audio at the current `queue_head` and increments the `queue_head` by 1.
-    pub fn current_track(&mut self) -> Option<PathBuf> {
-        let audio = self
-            .queue
+    pub fn get_path(&self) -> Option<PathBuf> {
+        self.queue
             .get(self.queue_head)
-            .map(|audio| audio.to_owned());
-
-        self.queue_head += 1;
-        audio
+            .map(|audio| audio.to_owned())
     }
 
-    pub fn push_to_queue(&mut self, path: PathBuf) {
+    /// if this is the first song to be added to the queue starts playing immediately
+    pub fn push_to_queue(&mut self, path: PathBuf, source_name: String) -> anyhow::Result<()> {
+        if self.queue.is_empty() {
+            self.play(&path, source_name)?;
+        }
+
         self.queue.push(path);
+        Ok(())
     }
 
     pub fn queue(&self) -> &[PathBuf] {
