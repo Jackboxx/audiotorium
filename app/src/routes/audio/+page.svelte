@@ -1,56 +1,63 @@
 <script lang="ts">
 	import { PUBLIC_API_URL_WS } from '$env/static/public';
-	import Banner from '$lib/banner.svelte';
 	import YouTubeSearch from '$lib/search/YouTubeSearch.svelte';
 	import { onMount } from 'svelte';
 	import { getVideoUrl, type YouTubeVideo } from '../../schema/video';
 	import { msgString } from '../../schema/messages/message';
-	import { handleResponse } from '../../schema/messages/response';
+	import { handleResponse, type ResponseHandler } from '../../schema/messages/response';
+	import type { AddQueueItemMsg } from '../../schema/messages/queueMessages';
+	import Sources from '$lib/audio/Sources.svelte';
 	import type {
-		AddQueueItemMsg,
-		AddSourceMsg
-	} from '../../schema/messages/queueMessages';
+		AddSourceResponse,
+		SessionConnectedResponse
+	} from '../../schema/messages/queueResponses';
 
 	let websocket: WebSocket;
-
-	let queue = [] as string[];
-	let current_index = 0;
-
-	const handlers = [
+	let handlers: ResponseHandler[] = [
 		[
-			'SEND_CLIENT_QUEUE_INFO_RESPONSE',
-			(data: { info: { current_head_index: number } }) => {
-				current_index = data.info.current_head_index;
+			'SESSION_CONNECTED_RESPONSE',
+			(data: SessionConnectedResponse) => {
+				sources = data.sources;
 			}
 		],
 		[
-			'ADD_QUEUE_ITEM_RESPONSE',
-			(data: { queue: string[] }) => {
-				queue = data.queue;
+			'ADD_SOURCE_RESPONSE',
+			(data: AddSourceResponse) => {
+				sources = data.sources;
 			}
 		]
 	];
 
+	let getActiveSource: () => string;
+
+	let sources: string[] = [];
+
 	onMount(() => {
 		websocket = new WebSocket(`${PUBLIC_API_URL_WS}/queue`);
-		websocket.onmessage = (event) => {
-			handleResponse(event.data, handlers);
-		};
-
-		websocket.onopen = (_) => {
-			const msg: AddSourceMsg = ['ADD_SOURCE', { sourceName: 'default' }];
-			websocket.send(msgString(msg));
-		};
 	});
 
-	const onSearchResultClick = (video: YouTubeVideo) => {
-		const msg: AddQueueItemMsg = [
-			'ADD_QUEUE_ITEM',
-			{ sourceName: 'default', title: video.snippet.title, url: getVideoUrl(video) }
-		];
-
+	const sendWsMsg = <T>(msg: [string, T]) => {
 		websocket.send(msgString(msg));
 	};
+
+	const onSearchResultClick = (video: YouTubeVideo) => {
+		const sourceName = getActiveSource();
+		if (!sourceName) {
+			return;
+		}
+
+		const msg: AddQueueItemMsg = [
+			'ADD_QUEUE_ITEM',
+			{ sourceName, title: video.snippet.title, url: getVideoUrl(video) }
+		];
+
+		sendWsMsg(msg);
+	};
+
+	$: websocket &&
+		(websocket.onmessage = (event) => {
+			handleResponse(event.data, handlers);
+		});
 </script>
 
 <div
@@ -63,18 +70,6 @@
 		class="row-span-2 flex flex-col items-center gap-2 lg:row-span-1 lg:border-l-[1px]
         lg:border-l-black lg:dark:border-l-neutral-300"
 	>
-		<div class="w-full">
-			<Banner text="Playing" />
-		</div>
-		<div class="text-lg">{queue.at(0)}</div>
-
-		<div class="w-full">
-			<Banner text="Next" />
-		</div>
-		<div class="flex w-full flex-col gap-1 overflow-y-scroll">
-			{#each queue.splice(1) as item}
-				<div class="text-lg">{item}</div>
-			{/each}
-		</div>
+		<Sources {sources} bind:getActiveSource bind:handlers {sendWsMsg} />
 	</div>
 </div>

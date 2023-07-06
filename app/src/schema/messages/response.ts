@@ -1,4 +1,6 @@
-export function handleResponse(response: any, handlers: [string, (data: any) => void][]) {
+export type ResponseHandler = [string, (data: any) => void];
+
+export function handleResponse(response: any, handlers: ResponseHandler[]) {
 	let data = JSON.parse(response);
 
 	for (const handler of handlers) {

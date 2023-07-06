@@ -5,6 +5,11 @@ export type AddQueueItemParams = {
 	title: string;
 };
 
+export type ReadQueueItemsMsg = ['READ_QUEUE_ITEMS', ReadQueueItemsParams];
+export type ReadQueueItemsParams = {
+	sourceName: string;
+};
+
 export type AddSourceMsg = ['ADD_SOURCE', AddSourceParams];
 export type AddSourceParams = {
 	sourceName: string;
