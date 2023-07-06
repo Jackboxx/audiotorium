@@ -59,22 +59,26 @@
 </script>
 
 <div class="h-full w-full">
-	<div class="grid h-24 w-full grid-rows-1 gap-2 overflow-x-scroll bg-red-900 lg:h-40">
-		{#each sources as source, index}
-			<div
-				class={`w-1/6 rounded ${
-					activeSource === index ? 'bg-blue-400' : 'bg-red-400'
-				} p-2 text-lg lg:text-2xl`}
-				role="button"
-				tabindex="0"
-				on:click={() => (activeSource = index)}
-				on:keydown={undefined}
-			>
-				{source}
-			</div>
-		{/each}
+	<div class="justify-left flex w-full items-start p-1">
+		<div class="scrollbar-hide flex overflow-x-scroll">
+			{#each sources as source, index}
+				<div
+					class={`max-w-[250px] truncate rounded ${
+						activeSource === index
+							? 'bg-gray-300 dark:bg-zinc-700'
+							: 'bg-gray-300 dark:bg-zinc-700'
+					} ml-1 p-2 text-lg lg:text-2xl `}
+					role="button"
+					tabindex="0"
+					on:click={() => (activeSource = index)}
+					on:keydown={undefined}
+				>
+					{source}
+				</div>
+			{/each}
+		</div>
 		<div
-			class="w-1/6 p-2"
+			class="ml-1 min-w-[40px] cursor-pointer select-none p-2 text-center"
 			role="button"
 			tabindex="0"
 			on:click={() => addSource('default')}
