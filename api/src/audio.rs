@@ -95,10 +95,10 @@ impl AudioSource {
 
         if let Some((start, end)) = self.loop_start_end {
             if self.queue_head > end {
-                self.queue_head = start;
+                self.update_queue_head(start);
             }
         } else if self.queue_head >= self.queue.len() {
-            self.queue_head = 0;
+            self.update_queue_head(0);
         }
 
         if let Some(path) = self.get_path() {
