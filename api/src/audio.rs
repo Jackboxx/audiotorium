@@ -8,15 +8,20 @@ use cpal::{
 };
 use creek::{ReadDiskStream, SymphoniaDecoder};
 use log::error;
+use serde::{Deserialize, Serialize};
 
-use crate::server::{LoopBounds, PlayNextParams, QueueServer};
+use crate::server::{LoopBounds, PlayNextParams, QueueServer, SendClientQueueInfoParams};
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub enum AudioStreamState {
-    #[default]
-    Playing,
+    Playing(PlaybackInfo),
     Buffering,
     Finished,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct PlaybackInfo {
+    current_head_index: usize,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -34,6 +39,7 @@ pub struct AudioSource {
     server_addr: Addr<QueueServer>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
+    playback_info: PlaybackInfo,
 }
 
 #[derive(Default)]
@@ -57,6 +63,9 @@ impl AudioSource {
             queue,
             server_addr,
             queue_head: 0,
+            playback_info: PlaybackInfo {
+                current_head_index: 0,
+            },
             loop_start_end: None,
         }
     }
@@ -66,7 +75,7 @@ impl AudioSource {
             return Err(anyhow!("queue is empty"));
         }
 
-        self.queue_head += 1;
+        self.update_queue_head(self.queue_head + 1);
 
         if let Some((start, end)) = self.loop_start_end {
             if self.queue_head > end {
@@ -104,7 +113,7 @@ impl AudioSource {
             fake_queue_head = self.queue.len() as isize - 1;
         }
 
-        self.queue_head = fake_queue_head as usize;
+        self.update_queue_head(fake_queue_head as usize);
 
         if let Some(path) = self.get_path() {
             self.play(&path, source_name)?;
@@ -122,11 +131,13 @@ impl AudioSource {
             return Ok(());
         }
 
-        self.queue_head = if let Some((start, end)) = self.loop_start_end {
+        let new_head_pos = if let Some((start, end)) = self.loop_start_end {
             index.clamp(start, end)
         } else {
             index.clamp(0, self.queue.len() - 1)
         };
+
+        self.update_queue_head(new_head_pos);
 
         if let Some(path) = self.get_path() {
             self.play(&path, source_name)?;
@@ -145,9 +156,10 @@ impl AudioSource {
         };
 
         let addr = self.server_addr.clone();
+        let info = self.playback_info.clone();
         let new_stream = self.device.build_output_stream(
             &self.config,
-            move |data: &mut [f32], _| match processor.try_process(data) {
+            move |data: &mut [f32], _| match processor.try_process(data, info.clone()) {
                 Ok(state) => match state {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
@@ -159,7 +171,11 @@ impl AudioSource {
                         }
                     }
                     AudioStreamState::Buffering => {}
-                    _ => {}
+                    AudioStreamState::Playing(info) => {
+                        if let Err(err) = addr.try_send(SendClientQueueInfoParams { info }) {
+                            error!("failed to send info for source {source_name}, ERROR: {err}");
+                        }
+                    }
                 },
                 Err(err) => error!("failed to process audio, ERROR: {err}"),
             },
@@ -200,19 +216,29 @@ impl AudioSource {
         Ok(())
     }
 
+    /// updates `queue_head` and `playback_info`
+    pub fn update_queue_head(&mut self, value: usize) {
+        self.playback_info.current_head_index = value;
+        self.queue_head = value;
+    }
+
     pub fn queue(&self) -> &[PathBuf] {
         &self.queue
     }
 }
 
 impl AudioProcessor {
-    pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
+    pub fn try_process(
+        &mut self,
+        mut data: &mut [f32],
+        info: PlaybackInfo,
+    ) -> anyhow::Result<AudioStreamState> {
         let mut cache_missed_this_cycle = false;
-        let mut stream_state = AudioStreamState::Playing;
+        let mut stream_state = AudioStreamState::Playing(info.clone());
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
             if self.playback_state == PlaybackState::Paused {
                 silence(data);
-                return Ok(AudioStreamState::Playing);
+                return Ok(AudioStreamState::Playing(info.clone()));
             }
 
             if !read_disk_stream.is_ready()? {
@@ -272,7 +298,7 @@ impl AudioProcessor {
                     }
 
                     data = &mut data[read_data.num_frames() * 2..];
-                    stream_state = AudioStreamState::Playing;
+                    stream_state = AudioStreamState::Playing(info.clone());
                 }
             }
         } else {

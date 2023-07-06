@@ -2,22 +2,48 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use actix::{Actor, Message, Context, Handler, AsyncContext};
+use actix::{Actor, Message, Context, Handler, AsyncContext, Recipient};
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use log::{error, info};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{audio::AudioSource, ErrorResponse, AUDIO_DIR, download_audio};
+use crate::{audio::{AudioSource, PlaybackInfo}, ErrorResponse, AUDIO_DIR, download_audio, session::PassThroughtMessage};
 
 #[derive(Default)]
 pub struct QueueServer {
     sources: HashMap<String, AudioSource>,
+    sessions: HashMap<usize, Recipient<PassThroughtMessage>>
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "usize")]
+pub struct Connect {
+    pub addr: Recipient<PassThroughtMessage>
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct Disconnect {
+    pub id: usize
+}
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "()")]
+#[serde(rename_all = "camelCase")]
+pub struct SendClientQueueInfoParams {
+    pub info: PlaybackInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendClientQueueInfoResponseParams {
+    pub info: PlaybackInfo,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum QueueMessage {
+pub enum QueueServerMessage {
     AddQueueItem(AddQueueParams),
     AddSource(AddSourceParams),
     PlayNext(PlayNextParams),
@@ -26,8 +52,20 @@ pub enum QueueMessage {
     LoopQueue(LoopQueueParams),
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum QueueServerMessageResponse {
+    AddQueueItemResponse(AddQueueResponseParams),
+    AddSourceResponse(AddSourceResponseParams),
+    PlayNextResponse(PlayNextResponseParams),
+    PlayPreviousResponse(PlayPreviousResponseParams),
+    PlaySelectedResponse(PlaySelectedResponseParams),
+    LoopQueueResponse(LoopQueueResponseParams),
+    SendClientQueueInfoResponse(SendClientQueueInfoResponseParams),
+}
+
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<Vec<String>, ErrorResponse>")]
+#[rtype(result = "Result<AddQueueResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct AddQueueParams {
     pub source_name: String,
@@ -35,34 +73,56 @@ pub struct AddQueueParams {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AddQueueResponseParams {
+    queue: Vec<String>
+}
+
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<Vec<String>, ErrorResponse>")]
+#[rtype(result = "Result<AddSourceResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct AddSourceParams {
     pub source_name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AddSourceResponseParams {
+    sources: Vec<String>
+}
+
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[rtype(result = "Result<PlayNextResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct PlayNextParams {
     pub source_name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayNextResponseParams;
+
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[rtype(result = "Result<PlayPreviousResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct PlayPreviousParams {
     pub source_name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayPreviousResponseParams;
+
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[rtype(result = "Result<PlaySelectedResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct PlaySelectedParams {
     pub source_name: String,
     pub index: usize,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaySelectedResponseParams;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,12 +132,16 @@ pub struct LoopBounds {
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[rtype(result = "Result<LoopQueueResponseParams, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
 pub struct LoopQueueParams {
     pub source_name: String,
     pub bounds: Option<LoopBounds>
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopQueueResponseParams;
 
 impl Actor for QueueServer {
     type Context = Context<Self>;
@@ -87,8 +151,44 @@ impl Actor for QueueServer {
     }
 }
 
+impl Handler<Connect> for QueueServer {
+    type Result = usize;
+    fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
+        let Connect { addr } = msg;
+        let id = self.sessions.keys().max().unwrap_or(&0) + 1;
+
+        self.sessions.insert(id, addr);
+        id
+    }
+}
+
+impl Handler<Disconnect> for QueueServer {
+    type Result = ();
+    fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
+        let Disconnect { id } = msg;
+        self.sessions.remove(&id);
+    }
+}
+
+impl Handler<SendClientQueueInfoParams> for QueueServer {
+   type Result = ();
+
+   fn handle(&mut self, msg: SendClientQueueInfoParams, _ctx: &mut Self::Context) -> Self::Result {
+       let SendClientQueueInfoParams { info } = msg;
+       for session in &self.sessions {
+           let addr = session.1; 
+           let msg_str = 
+               serde_json::to_string(&QueueServerMessageResponse::SendClientQueueInfoResponse(
+                       SendClientQueueInfoResponseParams { info: info.clone() })
+                   ).unwrap_or(String::new());
+
+           addr.do_send(PassThroughtMessage(msg_str));
+       }
+   }
+}
+
 impl Handler<AddQueueParams> for QueueServer {
-    type Result = Result<Vec<String>, ErrorResponse>;
+    type Result = Result<AddQueueResponseParams, ErrorResponse>;
 
     fn handle(&mut self, msg: AddQueueParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
@@ -122,21 +222,23 @@ impl Handler<AddQueueParams> for QueueServer {
         });
     }
 
-    Ok(source
-       .queue()
-       .into_iter()
-       .map(|path| path
-            .file_stem()
-            .unwrap_or(OsStr::new(""))
-            .to_str()
-            .map(|str| str.to_owned())
-            .unwrap_or(String::new())
-        ).collect())
+    Ok(AddQueueResponseParams { 
+        queue: source
+           .queue()
+           .into_iter()
+           .map(|path| path
+                .file_stem()
+                .unwrap_or(OsStr::new(""))
+                .to_str()
+                .map(|str| str.to_owned())
+                .unwrap_or(String::new())
+            ).collect()
+        })
     }
 }
 
 impl Handler<AddSourceParams> for QueueServer {
-    type Result = Result<Vec<String>, ErrorResponse>;
+    type Result = Result<AddSourceResponseParams, ErrorResponse>;
 
     fn handle(&mut self, msg: AddSourceParams, ctx: &mut Self::Context) -> Self::Result {
         info!("'AddSource' handler received a message, MESSAGE: {msg:?}");
@@ -161,12 +263,12 @@ impl Handler<AddSourceParams> for QueueServer {
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.add_source(source_name, source);
 
-        Ok(self.sources.keys().map(|key| key.to_owned()).collect())
+        Ok(AddSourceResponseParams { sources: self.sources.keys().map(|key| key.to_owned()).collect() } )
    } 
 }
 
 impl Handler<PlayNextParams> for QueueServer {
-    type Result = Result<(), ErrorResponse>;
+    type Result = Result<PlayNextResponseParams, ErrorResponse>;
 
    fn handle(&mut self, msg: PlayNextParams, _ctx: &mut Self::Context) -> Self::Result {
        info!("'PlayNext' handler received a message, MESSAGE: {msg:?}");
@@ -183,12 +285,12 @@ impl Handler<PlayNextParams> for QueueServer {
             return Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") });
        }
 
-       Ok(())
+       Ok(PlayNextResponseParams)
    } 
 }
 
 impl Handler<PlayPreviousParams> for QueueServer {
-    type Result = Result<(), ErrorResponse>;
+    type Result = Result<PlayPreviousResponseParams, ErrorResponse>;
 
    fn handle(&mut self, msg: PlayPreviousParams, _ctx: &mut Self::Context) -> Self::Result {
        info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
@@ -205,12 +307,12 @@ impl Handler<PlayPreviousParams> for QueueServer {
             return Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") });
        }
 
-       Ok(())
+       Ok(PlayPreviousResponseParams)
    } 
 }
 
 impl Handler<PlaySelectedParams> for QueueServer {
-    type Result = Result<(), ErrorResponse>;
+    type Result = Result<PlaySelectedResponseParams, ErrorResponse>;
 
    fn handle(&mut self, msg: PlaySelectedParams, _ctx: &mut Self::Context) -> Self::Result {
        info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
@@ -227,13 +329,13 @@ impl Handler<PlaySelectedParams> for QueueServer {
             return Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") });
        }
 
-       Ok(())
+       Ok(PlaySelectedResponseParams)
    } 
 }
 
 
 impl Handler<LoopQueueParams> for QueueServer {
-    type Result = Result<(), ErrorResponse>;
+    type Result = Result<LoopQueueResponseParams, ErrorResponse>;
 
    fn handle(&mut self, msg: LoopQueueParams, _ctx: &mut Self::Context) -> Self::Result {
        info!("'LoopQueue' handler received a message, MESSAGE: {msg:?}");
@@ -247,7 +349,7 @@ impl Handler<LoopQueueParams> for QueueServer {
             return Err(ErrorResponse { error: format!("no audio source/source with the name {source_name} found") });
        }
 
-       Ok(())
+       Ok(LoopQueueResponseParams)
    } 
 }
 
@@ -256,4 +358,3 @@ impl QueueServer {
         self.sources.insert(source_name, source);
     }
 }
-
