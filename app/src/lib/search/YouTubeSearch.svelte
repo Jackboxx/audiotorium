@@ -35,7 +35,7 @@
 			role="button"
 			tabindex="0"
 			on:click={() => onSearchResultClick(video)}
-			on:keydown={() => onSearchResultClick(video)}
+			on:keydown={() => {}}
 		>
 			<div>
 				<img
