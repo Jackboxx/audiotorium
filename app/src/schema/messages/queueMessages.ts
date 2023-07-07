@@ -10,6 +10,13 @@ export type ReadQueueItemsParams = {
 	sourceName: string;
 };
 
+export type MoveQueueItemMsg = ['MOVE_QUEUE_ITEM', MoveQueueItemParams];
+export type MoveQueueItemParams = {
+	sourceName: string;
+	oldPos: number;
+	newPos: number;
+};
+
 export type AddSourceMsg = ['ADD_SOURCE', AddSourceParams];
 export type AddSourceParams = {
 	sourceName: string;

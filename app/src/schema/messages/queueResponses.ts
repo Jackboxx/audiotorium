@@ -6,6 +6,10 @@ export type ReadQueueItemsResponse = {
 	queue: string[];
 };
 
+export type MoveQueueItemResponse = {
+	queue: string[];
+};
+
 export type AddSourceResponse = {
 	sources: string[];
 };

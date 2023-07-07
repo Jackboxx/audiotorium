@@ -17,7 +17,7 @@ use crate::server::{LoopBounds, PlayNextParams, QueueServer, SendClientQueueInfo
 
 #[derive(Debug)]
 pub enum AudioStreamState {
-    Playing(PlaybackInfo),
+    Playing,
     Buffering,
     Finished,
 }
@@ -60,7 +60,7 @@ impl Default for AudioProcessor {
             playback_state: PlaybackState::default(),
             had_cache_miss_last_cycle: false,
             last_msg_sent_at: Instant::now(),
-            hard_rate_limit: Duration::from_millis(100),
+            hard_rate_limit: Duration::from_millis(33),
         }
     }
 }
@@ -172,10 +172,9 @@ impl AudioSource {
         };
 
         let addr = self.server_addr.clone();
-        let info = self.playback_info.clone();
         let new_stream = self.device.build_output_stream(
             &self.config,
-            move |data: &mut [f32], _| match processor.try_process(data, info.clone()) {
+            move |data: &mut [f32], _| match processor.try_process(data) {
                 Ok(state) => match state {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
@@ -187,13 +186,15 @@ impl AudioSource {
                         }
                     }
                     AudioStreamState::Buffering => {}
-                    AudioStreamState::Playing(info) => {
+                    AudioStreamState::Playing => {
                         // prevent message spam from filling up mailbox of the server
                         if Instant::now().duration_since(processor.last_msg_sent_at)
                             > processor.hard_rate_limit
                         {
                             processor.last_msg_sent_at = Instant::now();
-                            if let Err(err) = addr.try_send(SendClientQueueInfoParams { info }) {
+                            if let Err(err) = addr.try_send(SendClientQueueInfoParams {
+                                source_name: source_name.clone(),
+                            }) {
                                 error!(
                                     "failed to send info for source {source_name}, ERROR: {err}"
                                 );
@@ -243,28 +244,27 @@ impl AudioSource {
     pub fn move_queue_item(&mut self, old: usize, new: usize) {
         if old == new {
             return;
-        } else if old > new {
-            for i in (new..old).rev() {
-                self.queue.swap(i, i + 1);
+        }
 
-                if i + 1 == self.queue_head {
+        if old > new {
+            for i in (new + 1..=old).rev() {
+                if self.queue_head == i - 1 {
                     self.update_queue_head(i);
+                } else if self.queue_head == i {
+                    self.update_queue_head(i - 1);
                 }
-                if i == self.queue_head {
-                    self.update_queue_head(i + 1);
-                }
+
+                self.queue.swap(i - 1, i);
             }
         } else {
             for i in old..new {
-                self.queue.swap(i, i + 1);
-
-                if i + 1 == self.queue_head {
+                if self.queue_head == i {
+                    self.update_queue_head(i + 1);
+                } else if self.queue_head == i + 1 {
                     self.update_queue_head(i);
                 }
 
-                if i == self.queue_head {
-                    self.update_queue_head(i + 1);
-                }
+                self.queue.swap(i, i + 1);
             }
         }
     }
@@ -278,20 +278,20 @@ impl AudioSource {
     pub fn queue(&self) -> &[PathBuf] {
         &self.queue
     }
+
+    pub fn playback_info(&self) -> &PlaybackInfo {
+        &self.playback_info
+    }
 }
 
 impl AudioProcessor {
-    pub fn try_process(
-        &mut self,
-        mut data: &mut [f32],
-        info: PlaybackInfo,
-    ) -> anyhow::Result<AudioStreamState> {
+    pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
         let mut cache_missed_this_cycle = false;
-        let mut stream_state = AudioStreamState::Playing(info.clone());
+        let mut stream_state = AudioStreamState::Playing;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
             if self.playback_state == PlaybackState::Paused {
                 silence(data);
-                return Ok(AudioStreamState::Playing(info.clone()));
+                return Ok(AudioStreamState::Playing);
             }
 
             if !read_disk_stream.is_ready()? {
@@ -351,7 +351,7 @@ impl AudioProcessor {
                     }
 
                     data = &mut data[read_data.num_frames() * 2..];
-                    stream_state = AudioStreamState::Playing(info.clone());
+                    stream_state = AudioStreamState::Playing;
                 }
             }
         } else {

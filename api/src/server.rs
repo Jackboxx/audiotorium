@@ -38,7 +38,7 @@ pub struct Disconnect {
 #[rtype(result = "()")]
 #[serde(rename_all = "camelCase")]
 pub struct SendClientQueueInfoParams {
-    pub info: PlaybackInfo,
+    pub source_name: String
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -221,16 +221,18 @@ impl Handler<SendClientQueueInfoParams> for QueueServer {
    type Result = ();
 
    fn handle(&mut self, msg: SendClientQueueInfoParams, _ctx: &mut Self::Context) -> Self::Result {
-       let SendClientQueueInfoParams { info } = msg;
-       for session in &self.sessions {
-           let addr = session.1; 
-           let msg_str = 
-               serde_json::to_string(&QueueServerMessageResponse::SendClientQueueInfoResponse(
-                       SendClientQueueInfoResponseParams { info: info.clone() })
-                   ).unwrap_or(String::new());
+       let SendClientQueueInfoParams { source_name } = msg;
+       if let Some(source) = self.sources.get(&source_name) {
+           for session in &self.sessions {
+               let addr = session.1; 
+               let msg_str = 
+                   serde_json::to_string(&QueueServerMessageResponse::SendClientQueueInfoResponse(
+                           SendClientQueueInfoResponseParams { info: source.playback_info().clone() })
+                       ).unwrap_or(String::new());
 
-           addr.do_send(PassThroughtMessage(msg_str));
-       }
+               addr.do_send(PassThroughtMessage(msg_str));
+           }
+       } 
    }
 }
 

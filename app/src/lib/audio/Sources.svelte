@@ -8,6 +8,7 @@
 	import Queue from './Queue.svelte';
 	import type {
 		AddQueueItemResponse,
+		MoveQueueItemResponse,
 		ReadQueueItemsResponse
 	} from '../../schema/messages/queueResponses';
 
@@ -36,6 +37,13 @@
 			}
 		]);
 
+		handlers.push([
+			'MOVE_QUEUE_ITEM_RESPONSE',
+			(data: MoveQueueItemResponse) => {
+				queue = data.queue;
+			}
+		]);
+
 		handlers = handlers;
 	});
 
@@ -58,7 +66,7 @@
 	$: readCurrentQueue(activeSource);
 </script>
 
-<div class="h-full w-full">
+<div class="flex h-full w-full flex-col">
 	<div class="justify-left flex w-full items-start p-1">
 		<div class="scrollbar-hide flex overflow-x-scroll">
 			{#each sources as source, index}
