@@ -13,7 +13,7 @@ use creek::{ReadDiskStream, SymphoniaDecoder};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::server::{LoopBounds, PlayNextParams, QueueServer, SendClientQueueInfoParams};
+use crate::server::{LoopBounds, PlayNextServerParams, QueueServer, SendClientQueueInfoParams};
 
 #[derive(Debug)]
 pub enum AudioStreamState {
@@ -179,7 +179,7 @@ impl AudioSource {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        if let Err(err) = addr.try_send(PlayNextParams {
+                        if let Err(err) = addr.try_send(PlayNextServerParams {
                             source_name: source_name.clone(),
                         }) {
                             error!("failed to play next audio in queue, ERROR: {err}");
