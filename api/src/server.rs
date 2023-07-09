@@ -8,7 +8,7 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
-use crate::{audio::{AudioSource, PlaybackInfo}, ErrorResponse, AUDIO_DIR, download_audio, session::FilteredPassThroughtMessage};
+use crate::{audio::{AudioSource, PlaybackInfo, PlaybackState}, ErrorResponse, AUDIO_DIR, download_audio, session::FilteredPassThroughtMessage};
 
 #[derive(Default)]
 pub struct QueueServer {
@@ -24,6 +24,8 @@ pub enum QueueServerMessage {
     MoveQueueItem(MoveQueueItemServerParams),
     AddSource(AddSourceServerParams),
     ReadSources(ReadSourcesServerParams),
+    PauseQueue(PauseQueueServerParams),
+    UnPauseQueue(UnPauseQueueServerParams),
     PlayNext(PlayNextServerParams),
     PlayPrevious(PlayPreviousServerParams),
     PlaySelected(PlaySelectedServerParams),
@@ -40,6 +42,8 @@ pub enum QueueServerMessageResponse {
     MoveQueueItemResponse(MoveQueueItemServerResponse),
     AddSourceResponse(AddSourceServerResponse),
     ReadSourcesResponse(ReadSourcesServerResponse),
+    PauseQueueResponse(PauseQueueServerResponse),
+    UnPauseQueueResponse(UnPauseQueueServerResponse),
     PlayNextResponse(PlayNextServerResponse),
     PlayPreviousResponse(PlayPreviousServerResponse),
     PlaySelectedResponse(PlaySelectedServerResponse),
@@ -70,13 +74,15 @@ pub struct Disconnect {
 #[rtype(result = "()")]
 #[serde(rename_all = "camelCase")]
 pub struct SendClientQueueInfoParams {
-    pub source_name: String
+    pub source_name: String,
+    pub playback_state: PlaybackState,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendClientQueueInfoServerResponse {
-    pub info: PlaybackInfo,
+    pub playback_info: PlaybackInfo,
+    pub playback_state: PlaybackState,
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
@@ -140,6 +146,28 @@ pub struct ReadSourcesServerParams;
 pub struct ReadSourcesServerResponse {
     pub sources: Vec<String>
 }
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<PauseQueueServerResponse, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct PauseQueueServerParams {
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseQueueServerResponse;
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<UnPauseQueueServerResponse, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct UnPauseQueueServerParams {
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnPauseQueueServerResponse;
 
 #[derive(Debug, Clone, Deserialize, Message)]
 #[rtype(result = "Result<PlayNextServerResponse, ErrorResponse>")]
@@ -234,13 +262,13 @@ impl Handler<SendClientQueueInfoParams> for QueueServer {
    type Result = ();
 
    fn handle(&mut self, msg: SendClientQueueInfoParams, _ctx: &mut Self::Context) -> Self::Result {
-       let SendClientQueueInfoParams { source_name } = msg;
+       let SendClientQueueInfoParams { source_name, playback_state } = msg;
        if let Some(source) = self.sources.get(&source_name) {
            for session in &self.sessions {
                let addr = session.1; 
                let msg = 
                    serde_json::to_string(&QueueServerMessageResponse::SendClientQueueInfoResponse(
-                           SendClientQueueInfoServerResponse { info: source.playback_info().clone() })
+                           SendClientQueueInfoServerResponse { playback_info: source.playback_info().clone(), playback_state: playback_state.clone() })
                        ).unwrap_or(String::new());
 
                addr.do_send(FilteredPassThroughtMessage { 
@@ -384,7 +412,7 @@ impl Handler<AddSourceServerParams> for QueueServer {
 
         let config = supported_config.into();
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
-        self.add_source(source_name, source);
+        self.sources.insert(source_name, source);
 
         Ok(AddSourceServerResponse { sources: self.sources.keys().map(|key| key.to_owned()).collect() } )
    } 
@@ -401,6 +429,40 @@ impl Handler<ReadSourcesServerParams> for QueueServer {
                .map(|k| k.to_owned())
                .collect()
        })
+   }
+}
+
+impl Handler<PauseQueueServerParams> for QueueServer {
+   type Result = Result<PauseQueueServerResponse, ErrorResponse>; 
+   fn handle(&mut self, msg: PauseQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+       info!("'PauseQueue' handler received a message, MESSAGE: {msg:?}");
+
+       let PauseQueueServerParams { source_name } = msg;
+       if let Some(source) = self.sources.get_mut(&source_name) {
+           source.set_stream_playback_state(crate::audio::PlaybackState::Paused)
+       } else {
+            error!("no audio source with the name {source_name} found, SOURCES: {:?}", self.sources.keys());
+            return Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") });
+       }
+
+       Ok(PauseQueueServerResponse)
+   }
+}
+
+impl Handler<UnPauseQueueServerParams> for QueueServer {
+   type Result = Result<UnPauseQueueServerResponse, ErrorResponse>; 
+   fn handle(&mut self, msg: UnPauseQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+       info!("'UnPauseQueue' handler received a message, MESSAGE: {msg:?}");
+
+       let UnPauseQueueServerParams { source_name } = msg;
+       if let Some(source) = self.sources.get_mut(&source_name) {
+           source.set_stream_playback_state(crate::audio::PlaybackState::Playing)
+       } else {
+            error!("no audio source with the name {source_name} found, SOURCES: {:?}", self.sources.keys());
+            return Err(ErrorResponse { error: format!("no audio source with the name {source_name} found") });
+       }
+
+       Ok(UnPauseQueueServerResponse)
    }
 }
 
@@ -487,10 +549,4 @@ impl Handler<LoopQueueServerParams> for QueueServer {
 
        Ok(LoopQueueServerResponse)
    } 
-}
-
-impl QueueServer {
-    fn add_source(&mut self, source_name: String, source: AudioSource) {
-        self.sources.insert(source_name, source);
-    }
 }

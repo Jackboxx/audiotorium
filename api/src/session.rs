@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     server::{
         AddQueueItemServerParams, AddSourceServerParams, Connect, Disconnect, LoopBounds,
-        LoopQueueServerParams, MoveQueueItemServerParams, PlayNextServerParams,
-        PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
+        LoopQueueServerParams, MoveQueueItemServerParams, PauseQueueServerParams,
+        PlayNextServerParams, PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
         QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
-        ReadSourcesServerResponse,
+        ReadSourcesServerResponse, UnPauseQueueServerParams,
     },
     ErrorResponse,
 };
@@ -42,6 +42,8 @@ pub enum QueueSessionMessage {
     ReadQueueItems,
     MoveQueueItem(MoveQueueItemSessionParams),
     AddSource(AddSourceSessionParams),
+    PauseQueue,
+    UnPauseQueue,
     PlayNext,
     PlayPrevious,
     PlaySelected(PlaySelectedSessionParams),
@@ -348,6 +350,52 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             }
                         });
 
+                        ctx.spawn(fut);
+                    }
+                    Ok(QueueSessionMessage::PauseQueue) => {
+                        let msg = PauseQueueServerParams {
+                            source_name: self.active_source_name.clone(),
+                        };
+
+                        let addr = self.server_addr.clone();
+                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
+                            Ok(params) => {
+                                ctx.text(
+                                    serde_json::to_string(
+                                        &QueueServerMessageResponse::PauseQueueResponse(params),
+                                    )
+                                    .unwrap_or("[]".to_owned()),
+                                );
+                            }
+                            Err(err_resp) => {
+                                ctx.text(
+                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
+                                );
+                            }
+                        });
+                        ctx.spawn(fut);
+                    }
+                    Ok(QueueSessionMessage::UnPauseQueue) => {
+                        let msg = UnPauseQueueServerParams {
+                            source_name: self.active_source_name.clone(),
+                        };
+
+                        let addr = self.server_addr.clone();
+                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
+                            Ok(params) => {
+                                ctx.text(
+                                    serde_json::to_string(
+                                        &QueueServerMessageResponse::UnPauseQueueResponse(params),
+                                    )
+                                    .unwrap_or("[]".to_owned()),
+                                );
+                            }
+                            Err(err_resp) => {
+                                ctx.text(
+                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
+                                );
+                            }
+                        });
                         ctx.spawn(fut);
                     }
                     Ok(QueueSessionMessage::PlayNext) => {

@@ -6,9 +6,11 @@
 	import type { SendClientQueueInfoResponse } from '../../schema/messages/queueResponses';
 	import type {
 		MoveQueueItemMsg,
+		PauseQueueMsg,
 		PlayNextMsg,
 		PlayPreviousMsg,
-		PlaySelectedMsg
+		PlaySelectedMsg,
+		UnPauseQueueMsg
 	} from '../../schema/messages/queueMessages';
 
 	export let handlers: ResponseHandler[];
@@ -18,6 +20,7 @@
 
 	let items: { name: string; id: number }[] = [];
 	let currentIndex = 0;
+	let paused = false;
 
 	let setOldPosLocked = false;
 	let oldPos: number | undefined;
@@ -27,7 +30,9 @@
 		handlers.push([
 			'SEND_CLIENT_QUEUE_INFO_RESPONSE',
 			(data: SendClientQueueInfoResponse) => {
-				currentIndex = data.info.current_head_index;
+				console.log(data);
+				currentIndex = data.playbackInfo.currentHeadIndex;
+				paused = data.playbackState === 'paused';
 			}
 		]);
 
@@ -46,6 +51,13 @@
 
 	const select = (index: number) => {
 		const msg: PlaySelectedMsg = ['PLAY_SELECTED', { index }];
+		sendWsMsg(msg);
+	};
+
+	const togglePause = () => {
+		const msg: PauseQueueMsg | UnPauseQueueMsg = paused
+			? ['UN_PAUSE_QUEUE']
+			: ['PAUSE_QUEUE'];
 		sendWsMsg(msg);
 	};
 
@@ -101,12 +113,23 @@
 						alt="previous"
 					/>
 				</div>
-				<div>Queue</div>
+				<div
+					on:click={togglePause}
+					on:keydown={undefined}
+					role="button"
+					tabindex="0"
+				>
+					<img
+						src="/media-play.svg"
+						alt="pause"
+						class="h-6 dark:invert lg:h-10"
+					/>
+				</div>
 				<div on:click={next} on:keydown={undefined} role="button" tabindex="0">
 					<img
 						src="/arrow-to-line-right.svg"
-						class="h-6 dark:invert lg:h-10"
 						alt="next"
+						class="h-6 dark:invert lg:h-10"
 					/>
 				</div>
 			</div></Banner

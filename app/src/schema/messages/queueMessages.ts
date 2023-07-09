@@ -22,8 +22,9 @@ export type AddSourceParams = {
 	sourceName: string;
 };
 
+export type PauseQueueMsg = ['PAUSE_QUEUE'];
+export type UnPauseQueueMsg = ['UN_PAUSE_QUEUE'];
 export type PlayNextMsg = ['PLAY_NEXT'];
-
 export type PlayPreviousMsg = ['PLAY_PREVIOUS'];
 
 export type PlaySelectedMsg = ['PLAY_SELECTED', PlaySelectedParams];

@@ -11,6 +11,7 @@ use cpal::{
 };
 use creek::{ReadDiskStream, SymphoniaDecoder};
 use log::error;
+use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
 use crate::server::{LoopBounds, PlayNextServerParams, QueueServer, SendClientQueueInfoParams};
@@ -23,11 +24,13 @@ pub enum AudioStreamState {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlaybackInfo {
     current_head_index: usize,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PlaybackState {
     #[default]
     Playing,
@@ -40,12 +43,14 @@ pub struct AudioSource {
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
     server_addr: Addr<QueueServer>,
+    processor_msg_buffer: Option<Producer<PlaybackState>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
     playback_info: PlaybackInfo,
 }
 
 pub struct AudioProcessor {
+    msg_buffer: Consumer<PlaybackState>,
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     playback_state: PlaybackState,
     had_cache_miss_last_cycle: bool,
@@ -53,10 +58,14 @@ pub struct AudioProcessor {
     hard_rate_limit: Duration,
 }
 
-impl Default for AudioProcessor {
-    fn default() -> Self {
+impl AudioProcessor {
+    fn new(
+        msg_buffer: Consumer<PlaybackState>,
+        read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+    ) -> Self {
         Self {
-            read_disk_stream: None,
+            msg_buffer,
+            read_disk_stream,
             playback_state: PlaybackState::default(),
             had_cache_miss_last_cycle: false,
             last_msg_sent_at: Instant::now(),
@@ -76,6 +85,7 @@ impl AudioSource {
             device,
             config,
             current_stream: None,
+            processor_msg_buffer: None,
             queue,
             server_addr,
             queue_head: 0,
@@ -162,55 +172,10 @@ impl AudioSource {
         Ok(())
     }
 
-    fn play(&mut self, path: &Path, source_name: String) -> anyhow::Result<()> {
-        let read_disk_stream =
-            ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
-
-        let mut processor = AudioProcessor {
-            read_disk_stream: Some(read_disk_stream),
-            ..Default::default()
-        };
-
-        let addr = self.server_addr.clone();
-        let new_stream = self.device.build_output_stream(
-            &self.config,
-            move |data: &mut [f32], _| match processor.try_process(data) {
-                Ok(state) => match state {
-                    AudioStreamState::Finished => {
-                        processor.read_disk_stream = None;
-
-                        if let Err(err) = addr.try_send(PlayNextServerParams {
-                            source_name: source_name.clone(),
-                        }) {
-                            error!("failed to play next audio in queue, ERROR: {err}");
-                        }
-                    }
-                    AudioStreamState::Buffering => {}
-                    AudioStreamState::Playing => {
-                        // prevent message spam from filling up mailbox of the server
-                        if Instant::now().duration_since(processor.last_msg_sent_at)
-                            > processor.hard_rate_limit
-                        {
-                            processor.last_msg_sent_at = Instant::now();
-                            if let Err(err) = addr.try_send(SendClientQueueInfoParams {
-                                source_name: source_name.clone(),
-                            }) {
-                                error!(
-                                    "failed to send info for source {source_name}, ERROR: {err}"
-                                );
-                            }
-                        }
-                    }
-                },
-                Err(err) => error!("failed to process audio, ERROR: {err}"),
-            },
-            move |err| error!("failed to process audio, ERROR: {err}"),
-            None,
-        )?;
-
-        new_stream.play()?;
-        self.current_stream = Some(new_stream);
-        Ok(())
+    pub fn set_stream_playback_state(&mut self, state: PlaybackState) {
+        if let Some(buffer) = self.processor_msg_buffer.as_mut() {
+            buffer.push(state).unwrap_or(());
+        }
     }
 
     /// sets the loop `start` and `end`.
@@ -282,10 +247,66 @@ impl AudioSource {
     pub fn playback_info(&self) -> &PlaybackInfo {
         &self.playback_info
     }
+
+    fn play(&mut self, path: &Path, source_name: String) -> anyhow::Result<()> {
+        let read_disk_stream =
+            ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
+
+        let (producer, consumer) = RingBuffer::<PlaybackState>::new(1);
+        self.processor_msg_buffer = Some(producer);
+
+        let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
+
+        let addr = self.server_addr.clone();
+        let new_stream = self.device.build_output_stream(
+            &self.config,
+            move |data: &mut [f32], _| match processor.try_process(data) {
+                Ok(state) => match state {
+                    AudioStreamState::Finished => {
+                        processor.read_disk_stream = None;
+
+                        if let Err(err) = addr.try_send(PlayNextServerParams {
+                            source_name: source_name.clone(),
+                        }) {
+                            error!("failed to play next audio in queue, ERROR: {err}");
+                        }
+                    }
+                    AudioStreamState::Buffering => {}
+                    AudioStreamState::Playing => {
+                        // prevent message spam from filling up mailbox of the server
+                        if Instant::now().duration_since(processor.last_msg_sent_at)
+                            > processor.hard_rate_limit
+                        {
+                            processor.last_msg_sent_at = Instant::now();
+                            if let Err(err) = addr.try_send(SendClientQueueInfoParams {
+                                source_name: source_name.clone(),
+                                playback_state: processor.playback_state.clone(),
+                            }) {
+                                error!(
+                                    "failed to send info for source {source_name}, ERROR: {err}"
+                                );
+                            }
+                        }
+                    }
+                },
+                Err(err) => error!("failed to process audio, ERROR: {err}"),
+            },
+            move |err| error!("failed to process audio, ERROR: {err}"),
+            None,
+        )?;
+
+        new_stream.play()?;
+        self.current_stream = Some(new_stream);
+        Ok(())
+    }
 }
 
 impl AudioProcessor {
     pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
+        while let Ok(state) = self.msg_buffer.pop() {
+            self.playback_state = state;
+        }
+
         let mut cache_missed_this_cycle = false;
         let mut stream_state = AudioStreamState::Playing;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {

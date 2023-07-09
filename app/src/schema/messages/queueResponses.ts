@@ -19,7 +19,8 @@ export type AddSourceResponse = {
 };
 
 export type SendClientQueueInfoResponse = {
-	info: { current_head_index: number };
+	playbackInfo: { currentHeadIndex: number };
+	playbackState: string;
 };
 
 export type SessionConnectedResponse = {
