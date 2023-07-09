@@ -36,7 +36,7 @@
 		websocket = new WebSocket(`${PUBLIC_API_URL_WS}/queue`);
 	});
 
-	const sendWsMsg = <T>(msg: [string, T]) => {
+	const sendWsMsg = <T>(msg: [string, T] | [string]) => {
 		websocket.send(msgString(msg));
 	};
 
@@ -48,7 +48,7 @@
 
 		const msg: AddQueueItemMsg = [
 			'ADD_QUEUE_ITEM',
-			{ sourceName, title: video.snippet.title, url: getVideoUrl(video) }
+			{ title: video.snippet.title, url: getVideoUrl(video) }
 		];
 
 		sendWsMsg(msg);

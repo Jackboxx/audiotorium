@@ -1,3 +1,3 @@
-export function msgString<T>(msg: [string, T]) {
-	return `{ "${msg[0]}": ${JSON.stringify(msg[1])}}`;
+export function msgString<T>(msg: [string, T] | [string]) {
+	return msg.length === 1 ? `"${msg}"` : `{ "${msg[0]}": ${JSON.stringify(msg[1])}}`;
 }

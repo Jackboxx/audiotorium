@@ -1,17 +1,20 @@
 <script lang="ts">
 	import Banner from '$lib/banner.svelte';
-	import { flip } from 'svelte/animate';
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
 	import type { ResponseHandler } from '../../schema/messages/response';
 	import { onMount } from 'svelte';
 	import type { SendClientQueueInfoResponse } from '../../schema/messages/queueResponses';
-	import type { MoveQueueItemMsg } from '../../schema/messages/queueMessages';
+	import type {
+		MoveQueueItemMsg,
+		PlayNextMsg,
+		PlayPreviousMsg,
+		PlaySelectedMsg
+	} from '../../schema/messages/queueMessages';
 
 	export let handlers: ResponseHandler[];
-	export let sendWsMsg: <T>(msg: [string, T]) => void;
+	export let sendWsMsg: <T>(msg: [string, T] | [string]) => void;
 
 	export let queue: string[];
-	export let activeSource: string;
 
 	let items: { name: string; id: number }[] = [];
 	let currentIndex = 0;
@@ -30,6 +33,21 @@
 
 		handlers = handlers;
 	});
+
+	const next = () => {
+		const msg: PlayNextMsg = ['PLAY_NEXT'];
+		sendWsMsg(msg);
+	};
+
+	const previous = () => {
+		const msg: PlayPreviousMsg = ['PLAY_PREVIOUS'];
+		sendWsMsg(msg);
+	};
+
+	const select = (index: number) => {
+		const msg: PlaySelectedMsg = ['PLAY_SELECTED', { index }];
+		sendWsMsg(msg);
+	};
 
 	const transformDraggedElement = (
 		_element: HTMLElement | undefined,
@@ -56,10 +74,7 @@
 		items = e.detail.items;
 
 		if (oldPos !== undefined && newPos !== undefined) {
-			let msg: MoveQueueItemMsg = [
-				'MOVE_QUEUE_ITEM',
-				{ sourceName: activeSource, oldPos, newPos }
-			];
+			let msg: MoveQueueItemMsg = ['MOVE_QUEUE_ITEM', { oldPos, newPos }];
 
 			sendWsMsg(msg);
 		}
@@ -70,7 +85,32 @@
 
 <div class="flex-grow">
 	<div class="w-full">
-		<Banner text="Queue" />
+		<Banner
+			><div
+				class="flex h-full items-center justify-between text-xl font-bold lg:text-3xl"
+			>
+				<div
+					on:click={previous}
+					on:keydown={undefined}
+					tabindex="0"
+					role="button"
+				>
+					<img
+						src="/arrow-to-line-left.svg"
+						class="h-6 dark:invert lg:h-10"
+						alt="previous"
+					/>
+				</div>
+				<div>Queue</div>
+				<div on:click={next} on:keydown={undefined} role="button" tabindex="0">
+					<img
+						src="/arrow-to-line-right.svg"
+						class="h-6 dark:invert lg:h-10"
+						alt="next"
+					/>
+				</div>
+			</div></Banner
+		>
 	</div>
 
 	<section
@@ -87,7 +127,9 @@
 						: 'bg-sky-200 dark:bg-indigo-300'
 				} text-center align-middle text-lg
                     lg:text-2xl`}
-				role="row"
+				on:dblclick={() => select(item.id)}
+				on:keydown={undefined}
+				role="button"
 				tabindex="0"
 			>
 				{item.name}

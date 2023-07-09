@@ -1,3 +1,7 @@
+export type SetActiveSourceResponse = {
+	sourceName: string;
+};
+
 export type AddQueueItemResponse = {
 	queue: string[];
 };

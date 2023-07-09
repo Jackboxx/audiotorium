@@ -1,18 +1,18 @@
+export type SetActiveSourceMsg = ['SET_ACTIVE_SOURCE', SetActiveSourceParams];
+export type SetActiveSourceParams = {
+	sourceName: string;
+};
+
 export type AddQueueItemMsg = ['ADD_QUEUE_ITEM', AddQueueItemParams];
 export type AddQueueItemParams = {
-	sourceName: string;
 	url: string;
 	title: string;
 };
 
-export type ReadQueueItemsMsg = ['READ_QUEUE_ITEMS', ReadQueueItemsParams];
-export type ReadQueueItemsParams = {
-	sourceName: string;
-};
+export type ReadQueueItemsMsg = ['READ_QUEUE_ITEMS'];
 
 export type MoveQueueItemMsg = ['MOVE_QUEUE_ITEM', MoveQueueItemParams];
 export type MoveQueueItemParams = {
-	sourceName: string;
 	oldPos: number;
 	newPos: number;
 };
@@ -22,25 +22,17 @@ export type AddSourceParams = {
 	sourceName: string;
 };
 
-export type PlayNextMsg = ['PLAY_NEXT', PlayNextParams];
-export type PlayNextParams = {
-	sourceName: string;
-};
+export type PlayNextMsg = ['PLAY_NEXT'];
 
-export type PlayPreviousMsg = ['PLAY_PREVIOUS', PlayPreviousParams];
-export type PlayPreviousParams = {
-	sourceName: string;
-};
+export type PlayPreviousMsg = ['PLAY_PREVIOUS'];
 
 export type PlaySelectedMsg = ['PLAY_SELECTED', PlaySelectedParams];
 export type PlaySelectedParams = {
-	sourceName: string;
 	index: number;
 };
 
 export type LoopQueueMsg = ['LOOP_QUEUE', LoopQueueParams];
 export type LoopQueueParams = {
-	sourceName: string;
 	bounds: {
 		start: number;
 		end: number;
