@@ -61,15 +61,18 @@
 </script>
 
 <div
-	class="grid h-screen w-full grid-rows-5
-    bg-gray-100 dark:bg-zinc-900 lg:grid-cols-2 lg:grid-rows-1"
+	class="grid w-full grid-rows-2 bg-gray-100 dark:bg-zinc-900 lg:grid-cols-2
+    lg:grid-rows-1"
 >
-	<YouTubeSearch {onSearchResultClick} />
-
 	<div
-		class="row-span-2 flex flex-col items-center gap-2 lg:row-span-1 lg:border-l-[1px]
-        lg:border-l-black lg:dark:border-l-neutral-300"
+		class="flex h-screen flex-col items-center gap-2 lg:order-2
+        lg:border-l-[1px] lg:border-l-black lg:dark:border-l-neutral-400"
 	>
 		<Sources {sources} bind:getActiveSource bind:handlers {sendWsMsg} />
+	</div>
+	<div
+		class=" flex flex-col items-center border-t-[1px] border-t-black px-2 dark:border-t-neutral-400 lg:order-1 lg:h-screen lg:overflow-y-scroll lg:border-t-[0px]"
+	>
+		<YouTubeSearch {onSearchResultClick} />
 	</div>
 </div>

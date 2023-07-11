@@ -78,16 +78,17 @@
 	$: readCurrentQueue(activeSource);
 </script>
 
-<div class="flex h-full w-full flex-col">
-	<div class="justify-left flex w-full items-start p-1">
-		<div class="scrollbar-hide flex overflow-x-scroll">
+<div class="flex h-screen w-full flex-col">
+	<div class="justify-left flex w-full items-start p-2">
+		<div class="scrollbar-hide flex items-center gap-1 overflow-x-scroll lg:gap-2">
 			{#each sources as source}
 				<div
 					class={`${
 						activeSource === source
-							? 'border-black dark:border-white'
+							? 'border-sky-500 dark:border-indigo-800'
 							: 'border-transparent'
-					} ml-1 max-w-[250px] truncate  rounded border-[1px] bg-gray-300 p-2 text-lg dark:bg-zinc-800 lg:text-2xl`}
+					} min-w-[120px] max-w-[250px] truncate rounded border-[2px]
+                    bg-gray-300 p-2 text-center text-lg dark:bg-zinc-800 lg:min-w-[180px] lg:max-w-[350px] lg:text-2xl`}
 					role="button"
 					tabindex="0"
 					on:click={() => setActiceSource(source)}
@@ -96,15 +97,19 @@
 					{source}
 				</div>
 			{/each}
-		</div>
-		<div
-			class="ml-1 min-w-[40px] cursor-pointer select-none p-2 text-center"
-			role="button"
-			tabindex="0"
-			on:click={() => addSource('default')}
-			on:keydown={undefined}
-		>
-			+
+			<div
+				class="flex h-full cursor-pointer select-none items-center text-center"
+				role="button"
+				tabindex="0"
+				on:click={() => addSource('default')}
+				on:keydown={undefined}
+			>
+				<img
+					class="w-[24px] dark:invert lg:w-[32px]"
+					src="/plus-square.svg"
+					alt="+"
+				/>
+			</div>
 		</div>
 	</div>
 	{#if sources.length > 0}

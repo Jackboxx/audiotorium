@@ -12,6 +12,8 @@
 		PlaySelectedMsg,
 		UnPauseQueueMsg
 	} from '../../schema/messages/queueMessages';
+	import QueueItem from './QueueItem.svelte';
+	import QueueItemPlaying from './QueueItemPlaying.svelte';
 
 	export let handlers: ResponseHandler[];
 	export let sendWsMsg: <T>(msg: [string, T] | [string]) => void;
@@ -92,10 +94,13 @@
 		}
 	};
 
+	let progress = 0;
+	setInterval(() => progress++, 100);
+
 	$: items = queue.map((item, index) => ({ name: item, id: index }));
 </script>
 
-<div class="flex-grow">
+<div class="flex-grow overflow-y-scroll">
 	<div class="w-full">
 		<Banner
 			><div
@@ -137,26 +142,25 @@
 	</div>
 
 	<section
-		class="w-full overflow-y-scroll"
 		use:dndzone={{ items, transformDraggedElement }}
 		on:consider={handleDndConsider}
 		on:finalize={handleDndFinalize}
 	>
 		{#each items as item (item.id)}
-			<div
-				class={`m-2 h-1/6 truncate rounded-lg p-2 ${
-					currentIndex == item.id
-						? 'bg-sky-400 dark:bg-indigo-500'
-						: 'bg-sky-200 dark:bg-indigo-300'
-				} text-center align-middle text-lg
-                    lg:text-2xl`}
-				on:dblclick={() => select(item.id)}
-				on:keydown={undefined}
-				role="button"
-				tabindex="0"
-			>
-				{item.name}
-			</div>
+			{#if item.id === currentIndex}
+				<QueueItemPlaying
+					title={item.name}
+					{progress}
+					duration={5}
+					onDblClick={() => select(item.id)}
+				/>
+			{:else}
+				<QueueItem
+					title={item.name}
+					duration={5}
+					onDblClick={() => select(item.id)}
+				/>
+			{/if}
 		{/each}
 	</section>
 </div>
