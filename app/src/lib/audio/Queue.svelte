@@ -114,7 +114,7 @@
 				>
 					<img
 						src="/arrow-to-line-left.svg"
-						class="h-6 dark:invert lg:h-10"
+						class="h-6 invert lg:h-10"
 						alt="previous"
 					/>
 				</div>
@@ -124,17 +124,13 @@
 					role="button"
 					tabindex="0"
 				>
-					<img
-						src="/media-play.svg"
-						alt="pause"
-						class="h-6 dark:invert lg:h-10"
-					/>
+					<img src="/media-play.svg" alt="pause" class="h-6 invert lg:h-10" />
 				</div>
 				<div on:click={next} on:keydown={undefined} role="button" tabindex="0">
 					<img
 						src="/arrow-to-line-right.svg"
 						alt="next"
-						class="h-6 dark:invert lg:h-10"
+						class="h-6 invert lg:h-10"
 					/>
 				</div>
 			</div></Banner

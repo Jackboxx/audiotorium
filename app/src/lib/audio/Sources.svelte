@@ -85,10 +85,10 @@
 				<div
 					class={`${
 						activeSource === source
-							? 'border-sky-500 dark:border-indigo-800'
+							? 'border-indigo-800'
 							: 'border-transparent'
 					} min-w-[120px] max-w-[250px] truncate rounded border-[2px]
-                    bg-gray-300 p-2 text-center text-lg dark:bg-zinc-800 lg:min-w-[180px] lg:max-w-[350px] lg:text-2xl`}
+                    bg-zinc-800 p-2 text-center text-lg lg:min-w-[180px] lg:max-w-[350px] lg:text-2xl`}
 					role="button"
 					tabindex="0"
 					on:click={() => setActiceSource(source)}
@@ -104,11 +104,7 @@
 				on:click={() => addSource('default')}
 				on:keydown={undefined}
 			>
-				<img
-					class="w-[24px] dark:invert lg:w-[32px]"
-					src="/plus-square.svg"
-					alt="+"
-				/>
+				<img class="w-[24px] invert lg:w-[32px]" src="/plus-square.svg" alt="+" />
 			</div>
 		</div>
 	</div>

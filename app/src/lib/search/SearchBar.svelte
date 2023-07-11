@@ -13,12 +13,12 @@
 	<div class="relative flex w-full flex-wrap items-stretch">
 		<input
 			type="search"
-			class="dark:focus:border-primary relative m-0 block w-[1px] min-w-0
-                flex-auto rounded-lg border border-solid border-neutral-300 bg-transparent
-                bg-clip-padding px-3 py-[0.25rem] text-base font-normal leading-[1.6]
-                text-neutral-700 outline-none transition duration-200 ease-in-out focus:z-[3]
-                focus:border-blue-700 focus:text-neutral-700 focus:outline-none dark:border-neutral-600
-                dark:text-neutral-200 dark:placeholder:text-neutral-200 dark:focus:text-white"
+			class="focus:border-primary relative m-0 block w-[1px] min-w-0
+                flex-auto rounded-lg border border-solid border-neutral-600
+                bg-transparent bg-clip-padding px-3 py-[0.25rem] text-base font-normal
+                leading-[1.6] text-neutral-200 outline-none transition duration-200
+                ease-in-out placeholder:text-neutral-200 focus:z-[3]
+                focus:border-blue-700 focus:text-white focus:outline-none"
 			placeholder="Search"
 			aria-label="Search"
 			aria-describedby="button-addon2"
@@ -28,7 +28,8 @@
 
 		<!--Search icon-->
 		<span
-			class="input-group-text flex cursor-pointer items-center whitespace-nowrap rounded px-3 py-1.5 text-center text-base font-normal text-neutral-700 dark:text-neutral-200"
+			class="input-group-text flex cursor-pointer items-center whitespace-nowrap rounded
+            px-3 py-1.5 text-center text-base font-normal text-neutral-200"
 			id="basic-addon2"
 			on:click={onConfirm}
 			on:keydown={onConfirm}

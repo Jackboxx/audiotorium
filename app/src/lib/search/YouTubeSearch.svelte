@@ -24,7 +24,7 @@
 </script>
 
 <div class="sticky top-0 h-full w-full">
-	<div class="flex w-full justify-center bg-gray-100 py-4 dark:bg-zinc-900">
+	<div class="flex w-full justify-center bg-zinc-900 py-4">
 		<SearchBar bind:searchText {onConfirm} />
 	</div>
 </div>
