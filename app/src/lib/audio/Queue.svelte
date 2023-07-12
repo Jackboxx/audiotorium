@@ -35,10 +35,9 @@
 		handlers.push([
 			'SEND_CLIENT_QUEUE_INFO_RESPONSE',
 			(data: SendClientQueueInfoResponse) => {
-				console.log(data);
 				currentIndex = data.playbackInfo.currentHeadIndex;
-				paused = data.processorInfo.playbackState === 'paused';
 				progress = data.processorInfo.audioProgress * 100;
+				paused = data.processorInfo.playbackState === 'paused';
 			}
 		]);
 

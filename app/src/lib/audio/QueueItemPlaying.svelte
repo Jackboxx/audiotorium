@@ -26,11 +26,12 @@
 	role="button"
 	tabindex="0"
 >
-	<div class="flex h-1/2 justify-between">
+	<div class="mb-2 h-[60%]">
 		<div class="truncate text-lg lg:text-2xl">{title}</div>
 		<div class="truncate text-sm lg:text-lg">{duration}min</div>
 	</div>
-	<div class="relative h-1/2">
+
+	<div class="relative">
 		<div class="absolute left-0 top-0 h-2 w-full rounded bg-indigo-950" />
 		<div
 			class=" absolute left-0 top-0 z-10 h-2 rounded bg-indigo-800"
