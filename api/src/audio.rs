@@ -29,6 +29,13 @@ pub struct PlaybackInfo {
     current_head_index: usize,
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessorInfo {
+    playback_state: PlaybackState,
+    audio_progress: f64,
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlaybackState {
@@ -52,10 +59,10 @@ pub struct AudioSource {
 pub struct AudioProcessor {
     msg_buffer: Consumer<PlaybackState>,
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
-    playback_state: PlaybackState,
     had_cache_miss_last_cycle: bool,
     last_msg_sent_at: Instant,
     hard_rate_limit: Duration,
+    info: ProcessorInfo,
 }
 
 impl AudioProcessor {
@@ -66,10 +73,10 @@ impl AudioProcessor {
         Self {
             msg_buffer,
             read_disk_stream,
-            playback_state: PlaybackState::default(),
             had_cache_miss_last_cycle: false,
             last_msg_sent_at: Instant::now(),
             hard_rate_limit: Duration::from_millis(33),
+            info: ProcessorInfo::default(),
         }
     }
 }
@@ -280,7 +287,7 @@ impl AudioSource {
                             processor.last_msg_sent_at = Instant::now();
                             if let Err(err) = addr.try_send(SendClientQueueInfoParams {
                                 source_name: source_name.clone(),
-                                playback_state: processor.playback_state.clone(),
+                                processor_info: processor.info.clone(),
                             }) {
                                 error!(
                                     "failed to send info for source {source_name}, ERROR: {err}"
@@ -304,13 +311,13 @@ impl AudioSource {
 impl AudioProcessor {
     pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
         while let Ok(state) = self.msg_buffer.pop() {
-            self.playback_state = state;
+            self.info.playback_state = state;
         }
 
         let mut cache_missed_this_cycle = false;
         let mut stream_state = AudioStreamState::Playing;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
-            if self.playback_state == PlaybackState::Paused {
+            if self.info.playback_state == PlaybackState::Paused {
                 silence(data);
                 return Ok(AudioStreamState::Playing);
             }
@@ -374,6 +381,8 @@ impl AudioProcessor {
                     data = &mut data[read_data.num_frames() * 2..];
                     stream_state = AudioStreamState::Playing;
                 }
+
+                self.info.audio_progress = playhead as f64 / num_frames as f64;
             }
         } else {
             silence(data);

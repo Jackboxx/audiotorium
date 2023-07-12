@@ -20,7 +20,10 @@ export type AddSourceResponse = {
 
 export type SendClientQueueInfoResponse = {
 	playbackInfo: { currentHeadIndex: number };
-	playbackState: string;
+	processorInfo: {
+		playbackState: string;
+		audioProgress: number;
+	};
 };
 
 export type SessionConnectedResponse = {

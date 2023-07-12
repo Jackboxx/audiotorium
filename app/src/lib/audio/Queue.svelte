@@ -21,7 +21,10 @@
 	export let queue: string[];
 
 	let items: { name: string; id: number }[] = [];
+
 	let currentIndex = 0;
+	let progress = 0;
+
 	let paused = false;
 
 	let setOldPosLocked = false;
@@ -34,7 +37,8 @@
 			(data: SendClientQueueInfoResponse) => {
 				console.log(data);
 				currentIndex = data.playbackInfo.currentHeadIndex;
-				paused = data.playbackState === 'paused';
+				paused = data.processorInfo.playbackState === 'paused';
+				progress = data.processorInfo.audioProgress * 100;
 			}
 		]);
 
@@ -93,9 +97,6 @@
 			sendWsMsg(msg);
 		}
 	};
-
-	let progress = 0;
-	setInterval(() => progress++, 100);
 
 	$: items = queue.map((item, index) => ({ name: item, id: index }));
 </script>

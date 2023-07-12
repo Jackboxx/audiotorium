@@ -8,7 +8,7 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
-use crate::{audio::{AudioSource, PlaybackInfo, PlaybackState}, ErrorResponse, AUDIO_DIR, download_audio, session::FilteredPassThroughtMessage};
+use crate::{audio::{AudioSource, PlaybackInfo, ProcessorInfo}, ErrorResponse, AUDIO_DIR, download_audio, session::FilteredPassThroughtMessage};
 
 #[derive(Default)]
 pub struct QueueServer {
@@ -75,14 +75,14 @@ pub struct Disconnect {
 #[serde(rename_all = "camelCase")]
 pub struct SendClientQueueInfoParams {
     pub source_name: String,
-    pub playback_state: PlaybackState,
+    pub processor_info: ProcessorInfo,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendClientQueueInfoServerResponse {
     pub playback_info: PlaybackInfo,
-    pub playback_state: PlaybackState,
+    pub processor_info: ProcessorInfo,
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
@@ -262,13 +262,13 @@ impl Handler<SendClientQueueInfoParams> for QueueServer {
    type Result = ();
 
    fn handle(&mut self, msg: SendClientQueueInfoParams, _ctx: &mut Self::Context) -> Self::Result {
-       let SendClientQueueInfoParams { source_name, playback_state } = msg;
+       let SendClientQueueInfoParams { source_name, processor_info } = msg;
        if let Some(source) = self.sources.get(&source_name) {
            for session in &self.sessions {
                let addr = session.1; 
                let msg = 
                    serde_json::to_string(&QueueServerMessageResponse::SendClientQueueInfoResponse(
-                           SendClientQueueInfoServerResponse { playback_info: source.playback_info().clone(), playback_state: playback_state.clone() })
+                           SendClientQueueInfoServerResponse { playback_info: source.playback_info().clone(), processor_info: processor_info.clone() })
                        ).unwrap_or(String::new());
 
                addr.do_send(FilteredPassThroughtMessage { 
