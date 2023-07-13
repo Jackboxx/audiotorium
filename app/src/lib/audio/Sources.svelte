@@ -56,26 +56,33 @@
 		handlers = handlers;
 	});
 
-	const addSource = (sourceName: string) => {
+	function addSource(sourceName: string) {
 		const msg: AddSourceMsg = ['ADD_SOURCE', { sourceName }];
 		sendWsMsg(msg);
-	};
+	}
 
-	const readCurrentQueue = (activeSource: string) => {
+	function setActiceSource(sourceName: string) {
+		const msg: SetActiveSourceMsg = ['SET_ACTIVE_SOURCE', { sourceName }];
+		sendWsMsg(msg);
+	}
+
+	function readCurrentQueue(activeSource: string) {
 		if (!activeSource) {
 			return;
 		}
 
 		const msg: ReadQueueItemsMsg = ['READ_QUEUE_ITEMS'];
 		sendWsMsg(msg);
-	};
+	}
 
-	const setActiceSource = (sourceName: string) => {
-		const msg: SetActiveSourceMsg = ['SET_ACTIVE_SOURCE', { sourceName }];
-		sendWsMsg(msg);
-	};
+	function defaultToOnlySource(sources: string[]) {
+		if (sources.length === 1) {
+			setActiceSource(sources[0]);
+		}
+	}
 
 	$: readCurrentQueue(activeSource);
+	$: defaultToOnlySource(sources);
 </script>
 
 <div class="flex w-full flex-col lg:h-screen">
