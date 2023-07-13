@@ -78,7 +78,7 @@
 	$: readCurrentQueue(activeSource);
 </script>
 
-<div class="flex h-screen w-full flex-col">
+<div class="flex w-full flex-col lg:h-screen">
 	<div class="justify-left flex w-full items-start p-2">
 		<div class="scrollbar-hide flex items-center gap-1 overflow-x-scroll lg:gap-2">
 			{#each sources as source}

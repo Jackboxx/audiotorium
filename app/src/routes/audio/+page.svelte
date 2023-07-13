@@ -61,12 +61,11 @@
 </script>
 
 <div
-	class="grid w-full grid-rows-2 bg-zinc-900 lg:grid-cols-2
+	class="w-full lg:grid lg:grid-cols-2
     lg:grid-rows-1"
 >
 	<div
-		class="flex h-screen flex-col items-center gap-2 lg:order-2
-        lg:border-l-[1px] lg:border-l-neutral-400"
+		class="flex flex-col items-center gap-2 lg:order-2 lg:border-l-[1px] lg:border-l-neutral-400"
 	>
 		<Sources {sources} bind:getActiveSource bind:handlers {sendWsMsg} />
 	</div>

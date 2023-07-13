@@ -114,7 +114,7 @@
 	$: items = queue.map((item, index) => ({ name: item, id: index }));
 </script>
 
-<div class="flex-grow overflow-y-scroll">
+<div class="lg:flex-grow lg:overflow-y-scroll">
 	<div class="w-full">
 		<Banner
 			><div
