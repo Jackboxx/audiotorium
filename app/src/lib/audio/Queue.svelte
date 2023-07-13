@@ -3,7 +3,10 @@
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
 	import type { ResponseHandler } from '../../schema/messages/response';
 	import { onMount } from 'svelte';
-	import type { SendClientQueueInfoResponse } from '../../schema/messages/queueResponses';
+	import type {
+		FinishedDownloadingResponse,
+		SendClientQueueInfoResponse
+	} from '../../schema/messages/queueResponses';
 	import type {
 		MoveQueueItemMsg,
 		PauseQueueMsg,
@@ -38,6 +41,17 @@
 				currentIndex = data.playbackInfo.currentHeadIndex;
 				progress = data.processorInfo.audioProgress * 100;
 				paused = data.processorInfo.playbackState === 'paused';
+			}
+		]);
+
+		handlers.push([
+			'FINISHED_DOWNLOADING_AUDIO',
+			(data: FinishedDownloadingResponse) => {
+				if (data.error) {
+					console.error(data.error);
+				} else if (data.queue) {
+					queue = data.queue;
+				}
 			}
 		]);
 

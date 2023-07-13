@@ -285,14 +285,10 @@ impl AudioSource {
                             > processor.hard_rate_limit
                         {
                             processor.last_msg_sent_at = Instant::now();
-                            if let Err(err) = addr.try_send(SendClientQueueInfoParams {
+                            addr.do_send(SendClientQueueInfoParams {
                                 source_name: source_name.clone(),
                                 processor_info: processor.info.clone(),
-                            }) {
-                                error!(
-                                    "failed to send info for source {source_name}, ERROR: {err}"
-                                );
-                            }
+                            });
                         }
                     }
                 },

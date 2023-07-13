@@ -71,8 +71,8 @@
 		<Sources {sources} bind:getActiveSource bind:handlers {sendWsMsg} />
 	</div>
 	<div
-		class=" flex flex-col items-center border-t-[1px] border-t-neutral-400 px-2 lg:order-1 lg:h-screen lg:overflow-y-scroll lg:border-t-[0px]"
+		class="flex flex-col items-center border-t-[1px] border-t-neutral-400 px-2 lg:order-1 lg:h-screen lg:overflow-y-scroll lg:border-t-[0px]"
 	>
-		<YouTubeSearch {onSearchResultClick} />
+		<YouTubeSearch {onSearchResultClick} bind:handlers />
 	</div>
 </div>

@@ -1,5 +1,4 @@
 use std::env;
-use std::process::Command;
 
 use actix::{Actor, Addr};
 use actix_cors::Cors;
@@ -7,13 +6,14 @@ use actix_web::web::{self, Data};
 use actix_web::{get, App, HttpRequest, HttpServer, Responder};
 use actix_web_actors::ws;
 
-use anyhow::anyhow;
+use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
 use server::QueueServer;
 
 use crate::session::QueueSession;
 
 mod audio;
+mod downloader;
 mod server;
 mod session;
 
@@ -27,28 +27,6 @@ pub struct AppData {
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
     error: String,
-}
-
-fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
-    let out = Command::new("yt-dlp")
-        .args([
-            "-f",
-            "bestaudio",
-            "-x",
-            "--audio-format",
-            "mp3",
-            "-o",
-            download_location,
-            url,
-        ])
-        .output()?;
-
-    if out.status.code().unwrap_or(1) != 0 {
-        dbg!(out);
-        return Err(anyhow!(""));
-    }
-
-    Ok(())
 }
 
 #[get("/queue")]
@@ -69,12 +47,16 @@ async fn main() -> std::io::Result<()> {
     env::set_var("RUST_LOG", "info");
     env_logger::init();
 
-    let queue_server = QueueServer::default();
+    let downloader = AudioDownloader::default();
+    let downloader_addr = downloader.start();
+
+    let queue_server = QueueServer::new(downloader_addr);
     let server_addr = queue_server.start();
 
     let data = Data::new(AppData {
         queue_server_addr: server_addr,
     });
+
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()

@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     server::{
-        AddQueueItemServerParams, AddSourceServerParams, Connect, Disconnect, LoopBounds,
-        LoopQueueServerParams, MoveQueueItemServerParams, PauseQueueServerParams,
-        PlayNextServerParams, PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
+        AddQueueItemServerParams, AddSourceServerParams, Connect, Disconnect,
+        FinishedDownloadingAudioServerResponse, LoopBounds, LoopQueueServerParams,
+        MoveQueueItemServerParams, PauseQueueServerParams, PlayNextServerParams,
+        PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
         QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
         ReadSourcesServerResponse, UnPauseQueueServerParams,
     },
@@ -55,6 +56,13 @@ pub enum QueueSessionMessage {
 #[allow(clippy::enum_variant_names)]
 pub enum QueueSessionResponse {
     SetActiveSourceResponse(SetActiveSourceSessionResponse),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum QueueSessionPassThroughMessages {
+    StartedDownloadingAudio,
+    FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
 }
 
 #[derive(Debug, Clone, Deserialize)]

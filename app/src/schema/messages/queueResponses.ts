@@ -19,11 +19,17 @@ export type AddSourceResponse = {
 };
 
 export type SendClientQueueInfoResponse = {
+	isDownloadingAudio: boolean;
 	playbackInfo: { currentHeadIndex: number };
 	processorInfo: {
 		playbackState: string;
 		audioProgress: number;
 	};
+};
+
+export type FinishedDownloadingResponse = {
+	error?: string;
+	queue?: string[];
 };
 
 export type SessionConnectedResponse = {
