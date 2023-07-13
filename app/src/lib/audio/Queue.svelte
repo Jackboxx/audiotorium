@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Banner from '$lib/banner.svelte';
+	import Banner from '$lib/Banner.svelte';
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
 	import type { ResponseHandler } from '../../schema/messages/response';
 	import { onMount } from 'svelte';

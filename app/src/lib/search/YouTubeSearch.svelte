@@ -8,6 +8,7 @@
 	} from '../../schema/video';
 	import { onMount } from 'svelte';
 	import type { ResponseHandler } from '../../schema/messages/response';
+	import Spinner from '$lib/Spinner.svelte';
 
 	export let onSearchResultClick: (video: YouTubeVideo) => void;
 	export let handlers: ResponseHandler[];
@@ -46,21 +47,23 @@
 	};
 </script>
 
-{#if downloadingAudio}
-	<div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform">
-		Downloading
-	</div>
-{/if}
-
-<div class="sticky top-0 h-full w-full">
+<div class={`${downloadingAudio ? 'blur' : ''} sticky top-0 w-full`}>
 	<div class="flex w-full justify-center bg-zinc-900 py-4">
 		<SearchBar bind:searchText {onConfirm} />
 	</div>
 </div>
 
+<div
+	class="sticky left-1/2 top-1/2 z-10 w-fit -translate-x-1/2 -translate-y-1/2 transform"
+>
+	<Spinner visible={downloadingAudio} />
+</div>
+
 {#each searchResults as video}
 	<div
-		class="my-4 grid aspect-video w-full grid-cols-2 gap-4"
+		class={`${
+			downloadingAudio ? 'blur' : ''
+		} my-4 grid aspect-video w-full grid-cols-2 gap-4`}
 		role="button"
 		tabindex="0"
 		on:click={() => {
