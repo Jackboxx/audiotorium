@@ -162,7 +162,8 @@
 					title={item.name}
 					{progress}
 					duration={5}
-					onDblClick={() => select(item.id)}
+					onDblClick={undefined}
+					{sendWsMsg}
 				/>
 			{:else}
 				<QueueItem

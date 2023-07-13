@@ -22,8 +22,14 @@ export type AddSourceParams = {
 	sourceName: string;
 };
 
+export type SetAudioProgressMsg = ['SET_AUDIO_PROGRESS', SetAUdioProgressParams];
+export type SetAUdioProgressParams = {
+	progress: number;
+};
+
 export type PauseQueueMsg = ['PAUSE_QUEUE'];
 export type UnPauseQueueMsg = ['UN_PAUSE_QUEUE'];
+
 export type PlayNextMsg = ['PLAY_NEXT'];
 export type PlayPreviousMsg = ['PLAY_PREVIOUS'];
 

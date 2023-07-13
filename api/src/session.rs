@@ -16,7 +16,7 @@ use crate::{
         MoveQueueItemServerParams, PauseQueueServerParams, PlayNextServerParams,
         PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
         QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
-        ReadSourcesServerResponse, UnPauseQueueServerParams,
+        ReadSourcesServerResponse, SetAudioProgressServerParams, UnPauseQueueServerParams,
     },
     ErrorResponse,
 };
@@ -43,6 +43,7 @@ pub enum QueueSessionMessage {
     ReadQueueItems,
     MoveQueueItem(MoveQueueItemSessionParams),
     AddSource(AddSourceSessionParams),
+    SetAudioProgress(SetAudioProgressSessionParams),
     PauseQueue,
     UnPauseQueue,
     PlayNext,
@@ -101,6 +102,12 @@ pub struct MoveQueueItemSessionParams {
 #[serde(rename_all = "camelCase")]
 pub struct AddSourceSessionParams {
     pub source_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAudioProgressSessionParams {
+    pub progress: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -358,6 +365,30 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             }
                         });
 
+                        ctx.spawn(fut);
+                    }
+                    Ok(QueueSessionMessage::SetAudioProgress(params)) => {
+                        let msg = SetAudioProgressServerParams {
+                            source_name: self.active_source_name.clone(),
+                            progress: params.progress,
+                        };
+
+                        let addr = self.server_addr.clone();
+                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
+                            Ok(params) => {
+                                ctx.text(
+                                    serde_json::to_string(
+                                        &QueueServerMessageResponse::SetAudioProgress(params),
+                                    )
+                                    .unwrap_or("[]".to_owned()),
+                                );
+                            }
+                            Err(err_resp) => {
+                                ctx.text(
+                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
+                                );
+                            }
+                        });
                         ctx.spawn(fut);
                     }
                     Ok(QueueSessionMessage::PauseQueue) => {

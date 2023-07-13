@@ -44,20 +44,26 @@ pub enum PlaybackState {
     Paused,
 }
 
+#[derive(Debug, Clone)]
+pub enum AudioProcessorMessage {
+    SetState(PlaybackState),
+    SetProgress(f64),
+}
+
 pub struct AudioSource {
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
     server_addr: Addr<QueueServer>,
-    processor_msg_buffer: Option<Producer<PlaybackState>>,
+    processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
     playback_info: PlaybackInfo,
 }
 
 pub struct AudioProcessor {
-    msg_buffer: Consumer<PlaybackState>,
+    msg_buffer: Consumer<AudioProcessorMessage>,
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     had_cache_miss_last_cycle: bool,
     last_msg_sent_at: Instant,
@@ -67,7 +73,7 @@ pub struct AudioProcessor {
 
 impl AudioProcessor {
     fn new(
-        msg_buffer: Consumer<PlaybackState>,
+        msg_buffer: Consumer<AudioProcessorMessage>,
         read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     ) -> Self {
         Self {
@@ -181,7 +187,19 @@ impl AudioSource {
 
     pub fn set_stream_playback_state(&mut self, state: PlaybackState) {
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
-            buffer.push(state).unwrap_or(());
+            buffer
+                .push(AudioProcessorMessage::SetState(state))
+                .unwrap_or(());
+        }
+    }
+
+    // progress is clamped between `0.0` and `1.0`
+    pub fn set_stream_progress(&mut self, progress: f64) {
+        let progress = progress.clamp(0.0, 1.0);
+        if let Some(buffer) = self.processor_msg_buffer.as_mut() {
+            buffer
+                .push(AudioProcessorMessage::SetProgress(progress))
+                .unwrap_or(());
         }
     }
 
@@ -259,7 +277,7 @@ impl AudioSource {
         let read_disk_stream =
             ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
 
-        let (producer, consumer) = RingBuffer::<PlaybackState>::new(1);
+        let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(1);
         self.processor_msg_buffer = Some(producer);
 
         let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
@@ -306,12 +324,28 @@ impl AudioSource {
 
 impl AudioProcessor {
     pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
-        while let Ok(state) = self.msg_buffer.pop() {
-            self.info.playback_state = state;
-        }
-
         let mut cache_missed_this_cycle = false;
         let mut stream_state = AudioStreamState::Playing;
+
+        while let Ok(msg) = self.msg_buffer.pop() {
+            match msg {
+                AudioProcessorMessage::SetState(state) => self.info.playback_state = state,
+                AudioProcessorMessage::SetProgress(percentage) => {
+                    if let Some(read_disk_stream) = &mut self.read_disk_stream {
+                        let num_frames = read_disk_stream.info().num_frames;
+                        let seek_frame = (num_frames as f64 * percentage) as usize;
+                        if let Ok(cache_found) =
+                            read_disk_stream.seek(seek_frame, creek::SeekMode::Auto)
+                        {
+                            if !cache_found {
+                                stream_state = AudioStreamState::Buffering;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
             if self.info.playback_state == PlaybackState::Paused {
                 silence(data);

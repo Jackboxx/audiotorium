@@ -30,6 +30,7 @@ pub enum QueueServerMessage {
     ReadQueueItems(ReadQueueServerParams),
     MoveQueueItem(MoveQueueItemServerParams),
     AddSource(AddSourceServerParams),
+    SetAudioProgress(SetAudioProgressServerParams),
     ReadSources(ReadSourcesServerParams),
     PauseQueue(PauseQueueServerParams),
     UnPauseQueue(UnPauseQueueServerParams),
@@ -50,6 +51,8 @@ pub enum QueueServerMessageResponse {
     MoveQueueItemResponse(MoveQueueItemServerResponse),
     AddSourceResponse(AddSourceServerResponse),
     ReadSourcesResponse(ReadSourcesServerResponse),
+    SetAudioProgress(SetAudioProgressServerResponse),
+    ReadSources(ReadSourcesServerResponse),
     PauseQueueResponse(PauseQueueServerResponse),
     UnPauseQueueResponse(UnPauseQueueServerResponse),
     PlayNextResponse(PlayNextServerResponse),
@@ -149,6 +152,17 @@ pub struct AddSourceServerParams {
 pub struct AddSourceServerResponse {
     sources: Vec<String>,
 }
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<SetAudioProgressServerResponse, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct SetAudioProgressServerParams {
+    pub progress: f64,
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetAudioProgressServerResponse;
 
 #[derive(Debug, Clone, Deserialize, Message)]
 #[rtype(result = "Result<ReadSourcesServerResponse, ErrorResponse>")]
@@ -588,6 +602,35 @@ impl Handler<ReadSourcesServerParams> for QueueServer {
         Ok(ReadSourcesServerResponse {
             sources: self.sources.keys().map(|k| k.to_owned()).collect(),
         })
+    }
+}
+
+impl Handler<SetAudioProgressServerParams> for QueueServer {
+    type Result = Result<SetAudioProgressServerResponse, ErrorResponse>;
+    fn handle(
+        &mut self,
+        msg: SetAudioProgressServerParams,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!("'SetAudioProgress' handler received a message, MESSAGE: {msg:?}");
+
+        let SetAudioProgressServerParams {
+            source_name,
+            progress,
+        } = msg;
+        if let Some(source) = self.sources.get_mut(&source_name) {
+            source.set_stream_progress(progress);
+        } else {
+            error!(
+                "no audio source with the name {source_name} found, SOURCES: {:?}",
+                self.sources.keys()
+            );
+            return Err(ErrorResponse {
+                error: format!("no audio source with the name {source_name} found"),
+            });
+        }
+
+        Ok(SetAudioProgressServerResponse)
     }
 }
 
