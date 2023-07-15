@@ -1,11 +1,8 @@
-use std::future::Future;
-
 use actix::{
-    fut::future::{FutureWrap, Map},
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
-    MailboxError, Message, Running, StreamHandler, WrapFuture,
+    Message, Running, StreamHandler, WrapFuture,
 };
-use actix_web_actors::ws::{self, WebsocketContext};
+use actix_web_actors::ws;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +17,43 @@ use crate::{
     },
     ErrorResponse,
 };
+macro_rules! send_and_handle_queue_server_msg {
+    ($enum:ident::$variant:ident, $msg_name: literal, $actor: tt, $msg: tt) => {{
+        let addr = $actor.server_addr.clone();
+        async move { addr.send($msg).await }
+            .into_actor($actor)
+            .map(|result, _, ctx| match result {
+                Ok(resp) => match resp {
+                    Ok(res) => {
+                        ctx.text(
+                            serde_json::to_string(
+                                &$crate::server::QueueServerMessageResponse::$variant(res),
+                            )
+                            .unwrap_or("{}".to_owned()),
+                        );
+                    }
+                    Err(err_resp) => {
+                        ctx.text(serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()));
+                    }
+                },
+                Err(err) => {
+                    error!(
+                        "queue server didn't responde to message '{}', ERROR: {err}",
+                        $msg_name
+                    );
+                    ctx.text(
+                        serde_json::to_string(&ErrorResponse {
+                            error: format!(
+                                "server failed to responde to message '{}', ERROR: {err}",
+                                $msg_name
+                            ),
+                        })
+                        .unwrap_or("{}".to_owned()),
+                    );
+                }
+            })
+    }};
+}
 
 #[derive(Debug, Clone)]
 pub struct QueueSession {
@@ -124,43 +158,6 @@ impl QueueSession {
             server_addr,
         }
     }
-
-    /// sends a msg to the `QueueServer` and takes a closure that handles the response
-    fn send_and_handle_msg<M, F>(
-        &self,
-        msg: M,
-        addr: Addr<QueueServer>,
-        handle_func: F,
-    ) -> Map<
-        FutureWrap<impl Future<Output = Result<M::Result, MailboxError>>, QueueSession>,
-        impl FnOnce(
-            Result<M::Result, MailboxError>,
-            &mut QueueSession,
-            &mut WebsocketContext<QueueSession>,
-        ),
-    >
-    where
-        M: 'static,
-        M: Message + std::marker::Send,
-        <M as actix::Message>::Result: Send,
-        QueueServer: actix::Handler<M>,
-        F: FnOnce(M::Result, &mut QueueSession, &mut <QueueSession as Actor>::Context),
-    {
-        async move { addr.send(msg).await }
-            .into_actor(self)
-            .map(|result, act, ctx| match result {
-                Ok(resp) => handle_func(resp, act, ctx),
-                Err(err) => {
-                    error!("queue server didn't responde to message, ERROR: {err}");
-                    ctx.text(
-                        serde_json::to_string(&ErrorResponse {
-                            error: format!("server failed to responde to message, ERROR: {err}"),
-                        })
-                        .unwrap_or("{}".to_owned()),
-                    );
-                }
-            })
-    }
 }
 
 impl Actor for QueueSession {
@@ -240,30 +237,44 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                         let msg = ReadSourcesServerParams {};
 
                         let addr = self.server_addr.clone();
-                        let fut =
-                            self.send_and_handle_msg(msg, addr, |resp, act, ctx| match resp {
-                                Ok(ReadSourcesServerResponse { sources }) => {
-                                    if sources.contains(&params.source_name) {
-                                        act.active_source_name = params.source_name;
-                                    };
 
+                        let fut = async move { addr.send(msg).await }.into_actor(self).map(
+                            |result, act, ctx| match result {
+                                Ok(resp) => match resp {
+                                    Ok(ReadSourcesServerResponse { sources }) => {
+                                        if sources.contains(&params.source_name) {
+                                            act.active_source_name = params.source_name;
+                                        };
+
+                                        ctx.text(
+                                            serde_json::to_string(
+                                                &QueueSessionResponse::SetActiveSourceResponse(
+                                                    SetActiveSourceSessionResponse {
+                                                        source_name: act.active_source_name.clone(),
+                                                    },
+                                                ),
+                                            )
+                                            .unwrap_or("{}".to_owned()),
+                                        );
+                                    }
+                                    Err(err_resp) => {
+                                        ctx.text(
+                                            serde_json::to_string(&err_resp)
+                                                .unwrap_or("{}".to_owned()),
+                                        );
+                                    }
+                                },
+                                Err(err) => {
+                                    error!("queue server didn't responde to message, ERROR: {err}");
                                     ctx.text(
-                                        serde_json::to_string(
-                                            &QueueSessionResponse::SetActiveSourceResponse(
-                                                SetActiveSourceSessionResponse {
-                                                    source_name: act.active_source_name.clone(),
-                                                },
-                                            ),
-                                        )
-                                        .unwrap_or("{}".to_owned()),
-                                    );
+                        serde_json::to_string(&ErrorResponse {
+                            error: format!("server failed to responde to message, ERROR: {err}"),
+                        })
+                        .unwrap_or("{}".to_owned()),
+                    );
                                 }
-                                Err(err_resp) => {
-                                    ctx.text(
-                                        serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                    );
-                                }
-                            });
+                            },
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -274,22 +285,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             url: params.url,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::AddQueueItemResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::AddQueueItemResponse,
+                            "AddQueueItemResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -298,22 +299,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: self.active_source_name.clone(),
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::ReadQueueItemsResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::ReadQueueItemsResponse,
+                            "ReadQueueItemsResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -324,22 +315,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             new_pos: params.new_pos,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::MoveQueueItemResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::MoveQueueItemResponse,
+                            "MoveQueueItemResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -348,22 +329,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: params.source_name,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::AddSourceResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::AddSourceResponse,
+                            "AddSourceResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -373,22 +344,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             progress: params.progress,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::SetAudioProgress(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::SetAudioProgress,
+                            "SetAudioProgress",
+                            self,
+                            msg
+                        );
+
                         ctx.spawn(fut);
                     }
                     Ok(QueueSessionMessage::PauseQueue) => {
@@ -396,22 +358,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: self.active_source_name.clone(),
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::PauseQueueResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::PauseQueueResponse,
+                            "PauseQueueResponse",
+                            self,
+                            msg
+                        );
+
                         ctx.spawn(fut);
                     }
                     Ok(QueueSessionMessage::UnPauseQueue) => {
@@ -419,22 +372,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: self.active_source_name.clone(),
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::UnPauseQueueResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::UnPauseQueueResponse,
+                            "UnPauseQueueResponse",
+                            self,
+                            msg
+                        );
+
                         ctx.spawn(fut);
                     }
                     Ok(QueueSessionMessage::PlayNext) => {
@@ -442,22 +386,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: self.active_source_name.clone(),
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::PlayNextResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::PlayNextResponse,
+                            "PlayNextResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -466,22 +400,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             source_name: self.active_source_name.clone(),
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::PlayPreviousResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::PlayPreviousResponse,
+                            "PlayPreviousResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -491,22 +415,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             index: params.index,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::PlaySelectedResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::PlaySelectedResponse,
+                            "PlaySelectedResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
@@ -516,22 +430,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                             bounds: params.bounds,
                         };
 
-                        let addr = self.server_addr.clone();
-                        let fut = self.send_and_handle_msg(msg, addr, |resp, _, ctx| match resp {
-                            Ok(params) => {
-                                ctx.text(
-                                    serde_json::to_string(
-                                        &QueueServerMessageResponse::LoopQueueResponse(params),
-                                    )
-                                    .unwrap_or("[]".to_owned()),
-                                );
-                            }
-                            Err(err_resp) => {
-                                ctx.text(
-                                    serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()),
-                                );
-                            }
-                        });
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::LoopQueueResponse,
+                            "LoopQueueResponse",
+                            self,
+                            msg
+                        );
 
                         ctx.spawn(fut);
                     }
