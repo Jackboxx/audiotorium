@@ -2,7 +2,7 @@
 	import type { SetAudioProgressMsg } from '../../schema/messages/queueMessages';
 
 	export let sendWsMsg: <T>(msg: [string, T] | [string]) => void;
-	export let onDblClick: () => void | undefined;
+	export let onDblClick: (() => void) | undefined;
 	export let title: string;
 	export let duration: number;
 	export let progress: number;
@@ -46,11 +46,13 @@
 		<div
 			bind:clientWidth={progressBarWidth}
 			on:click={onProgressBarClick}
+			role="none"
 			class="absolute left-0 top-0 h-2 w-full rounded bg-indigo-950"
 		/>
 		<div
 			on:click={onProgressBarClick}
 			class=" absolute left-0 top-0 z-10 h-2 rounded bg-indigo-800"
+			role="none"
 			style={`width: ${progress ?? 0}%;`}
 		/>
 	</div>
