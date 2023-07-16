@@ -1,4 +1,28 @@
 # vim:ft=yaml.ansible
-- name: Audio Server Setup
+- name: Home Server Setup
   hosts: localhost
   connection: local
+
+  vars:
+    home_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}"
+
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        pkg:
+          - gcc
+          - htop
+          - curl
+          - neovim
+          - bluez-alsa-utils
+          - libasound2
+          - libasound2-dev
+          - libudev-dev
+          - pkg-config
+      become: true
+
+    - name: Copy ALSA config
+      ansible.builtin.copy:
+        src: "./.asoundrc"
+        dest: "{{ home_dir }}/.asoundrc"
+        mode: "0777"
