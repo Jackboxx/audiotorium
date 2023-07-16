@@ -152,7 +152,11 @@
 	</div>
 
 	<section
-		use:dndzone={{ items, transformDraggedElement }}
+		use:dndzone={{
+			items,
+			transformDraggedElement,
+			dropTargetStyle: { background: '#57534e' }
+		}}
 		on:consider={handleDndConsider}
 		on:finalize={handleDndFinalize}
 	>
