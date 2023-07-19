@@ -111,6 +111,7 @@ impl AudioSource {
 
     pub fn play_next(&mut self, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
+            self.current_stream = None;
             return Ok(());
         }
 
@@ -133,6 +134,7 @@ impl AudioSource {
 
     pub fn play_prev(&mut self, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
+            self.current_stream = None;
             return Ok(());
         }
 
@@ -163,6 +165,7 @@ impl AudioSource {
 
     pub fn play_selected(&mut self, index: usize, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
+            self.current_stream = None;
             return Ok(());
         }
 
@@ -241,9 +244,17 @@ impl AudioSource {
         if self.queue.is_empty() {
             self.play_next(source_name) // play nothing
         } else if idx == self.queue_head {
-            self.play_selected(self.queue_head, source_name) // play next
+            if self.queue_head > 0 {
+                self.update_queue_head(self.queue_head - 1);
+            } else {
+                self.update_queue_head(self.queue.len() - 1);
+            }
+
+            self.play_next(source_name)
         } else if idx < self.queue_head {
-            self.play_selected(self.queue_head - 1, source_name) // keep playing current
+            // keep playing current
+            self.update_queue_head(self.queue_head - 1);
+            Ok(())
         } else {
             Ok(()) // keep playing current
         }
