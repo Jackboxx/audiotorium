@@ -3,6 +3,8 @@
 
 	export let sendWsMsg: <T>(msg: [string, T] | [string]) => void;
 	export let onDblClick: (() => void) | undefined;
+	export let onRemoveClick: (() => void) | undefined;
+
 	export let title: string;
 	export let duration: number;
 	export let progress: number;

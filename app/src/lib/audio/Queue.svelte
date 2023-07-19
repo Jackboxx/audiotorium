@@ -13,6 +13,7 @@
 		PlayNextMsg,
 		PlayPreviousMsg,
 		PlaySelectedMsg,
+		RemoveQueueItemMsg,
 		UnPauseQueueMsg
 	} from '../../schema/messages/queueMessages';
 	import QueueItem from './QueueItem.svelte';
@@ -72,6 +73,11 @@
 		const msg: PlaySelectedMsg = ['PLAY_SELECTED', { index }];
 		sendWsMsg(msg);
 	};
+
+    const remove = (index: number) => {
+		const msg: RemoveQueueItemMsg = ['REMOVE_QUEUE_ITEM', { index }];
+		sendWsMsg(msg);
+    }
 
 	const togglePause = () => {
 		const msg: PauseQueueMsg | UnPauseQueueMsg = paused
@@ -147,8 +153,8 @@
 						class="h-6 invert lg:h-10"
 					/>
 				</div>
-			</div></Banner
-		>
+        </div>
+        </Banner>
 	</div>
 
 	<section
@@ -167,12 +173,14 @@
 					{progress}
 					duration={5}
 					onDblClick={undefined}
+                    onRemoveClick={() => remove(item.id)}
 					{sendWsMsg}
 				/>
 			{:else}
 				<QueueItem
 					title={item.name}
 					duration={5}
+                    onRemoveClick={() => remove(item.id)}
 					onDblClick={() => select(item.id)}
 				/>
 			{/if}

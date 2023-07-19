@@ -11,6 +11,7 @@
 		AddQueueItemResponse,
 		MoveQueueItemResponse,
 		ReadQueueItemsResponse,
+		RemoveQueueItemResponse,
 		SetActiveSourceResponse
 	} from '../../schema/messages/queueResponses';
 
@@ -35,6 +36,13 @@
 		handlers.push([
 			'ADD_QUEUE_ITEM_RESPONSE',
 			(data: AddQueueItemResponse) => {
+				queue = data.queue;
+			}
+		]);
+
+		handlers.push([
+			'REMOVE_QUEUE_ITEM_RESPONSE',
+			(data: RemoveQueueItemResponse) => {
 				queue = data.queue;
 			}
 		]);

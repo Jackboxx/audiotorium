@@ -1,38 +1,42 @@
 export type SetActiveSourceResponse = {
-	sourceName: string;
+    sourceName: string;
 };
 
 export type AddQueueItemResponse = {
-	queue: string[];
+    queue: string[];
+};
+
+export type RemoveQueueItemResponse = {
+    queue: string[];
 };
 
 export type ReadQueueItemsResponse = {
-	queue: string[];
+    queue: string[];
 };
 
 export type MoveQueueItemResponse = {
-	queue: string[];
+    queue: string[];
 };
 
 export type AddSourceResponse = {
-	sources: string[];
+    sources: string[];
 };
 
 export type SendClientQueueInfoResponse = {
-	isDownloadingAudio: boolean;
-	playbackInfo: { currentHeadIndex: number };
-	processorInfo: {
-		playbackState: string;
-		audioProgress: number;
-	};
+    isDownloadingAudio: boolean;
+    playbackInfo: { currentHeadIndex: number };
+    processorInfo: {
+        playbackState: string;
+        audioProgress: number;
+    };
 };
 
 export type FinishedDownloadingResponse = {
-	error?: string;
-	queue?: string[];
+    error?: string;
+    queue?: string[];
 };
 
 export type SessionConnectedResponse = {
-	id: number;
-	sources: string[];
+    id: number;
+    sources: string[];
 };
