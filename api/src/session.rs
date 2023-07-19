@@ -13,7 +13,8 @@ use crate::{
         MoveQueueItemServerParams, PauseQueueServerParams, PlayNextServerParams,
         PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
         QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
-        ReadSourcesServerResponse, SetAudioProgressServerParams, UnPauseQueueServerParams,
+        ReadSourcesServerResponse, RemoveQueueItemServerParams, SetAudioProgressServerParams,
+        UnPauseQueueServerParams,
     },
     ErrorResponse,
 };
@@ -74,6 +75,7 @@ pub struct FilteredPassThroughtMessage {
 pub enum QueueSessionMessage {
     SetActiveSource(SetActiveSourceSessionParams),
     AddQueueItem(AddQueueItemSessionParams),
+    RemoveQueueItem(RemoveQueueItemSessionParams),
     ReadQueueItems,
     MoveQueueItem(MoveQueueItemSessionParams),
     AddSource(AddSourceSessionParams),
@@ -117,6 +119,12 @@ pub struct SetActiveSourceSessionResponse {
 pub struct AddQueueItemSessionParams {
     pub title: String,
     pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveQueueItemSessionParams {
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -288,6 +296,21 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                         let fut = send_and_handle_queue_server_msg!(
                             QueueServerMessageResponse::AddQueueItemResponse,
                             "AddQueueItemResponse",
+                            self,
+                            msg
+                        );
+
+                        ctx.spawn(fut);
+                    }
+                    Ok(QueueSessionMessage::RemoveQueueItem(params)) => {
+                        let msg = RemoveQueueItemServerParams {
+                            source_name: self.active_source_name.clone(),
+                            index: params.index,
+                        };
+
+                        let fut = send_and_handle_queue_server_msg!(
+                            QueueServerMessageResponse::RemoveQueueItemResponse,
+                            "RemoveQueueItemResponse",
                             self,
                             msg
                         );

@@ -111,7 +111,7 @@ impl AudioSource {
 
     pub fn play_next(&mut self, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
-            return Err(anyhow!("queue is empty"));
+            return Ok(());
         }
 
         self.update_queue_head(self.queue_head + 1);
@@ -133,7 +133,7 @@ impl AudioSource {
 
     pub fn play_prev(&mut self, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
-            return Err(anyhow!("queue is empty"));
+            return Ok(());
         }
 
         // casting could technically be a problem if we have very large queues like 2^32
@@ -163,7 +163,7 @@ impl AudioSource {
 
     pub fn play_selected(&mut self, index: usize, source_name: String) -> anyhow::Result<()> {
         if self.queue.is_empty() {
-            return Err(anyhow!("queue is empty"));
+            return Ok(());
         }
 
         if index == self.queue_head {
@@ -229,6 +229,24 @@ impl AudioSource {
 
         self.queue.push(path);
         Ok(())
+    }
+
+    pub fn remove_from_queue(&mut self, idx: usize, source_name: String) -> anyhow::Result<()> {
+        if idx >= self.queue.len() {
+            return Err(anyhow!("index out of bounds, can not remove item"));
+        }
+
+        self.queue.remove(idx);
+
+        if self.queue.is_empty() {
+            self.play_next(source_name) // play nothing
+        } else if idx == self.queue_head {
+            self.play_selected(self.queue_head, source_name) // play next
+        } else if idx < self.queue_head {
+            self.play_selected(self.queue_head - 1, source_name) // keep playing current
+        } else {
+            Ok(()) // keep playing current
+        }
     }
 
     pub fn move_queue_item(&mut self, old: usize, new: usize) {

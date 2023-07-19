@@ -27,6 +27,7 @@ pub struct QueueServer {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QueueServerMessage {
     AddQueueItem(AddQueueItemServerParams),
+    RemoveQueueItem(RemoveQueueItemServerParams),
     ReadQueueItems(ReadQueueServerParams),
     MoveQueueItem(MoveQueueItemServerParams),
     AddSource(AddSourceServerParams),
@@ -46,6 +47,7 @@ pub enum QueueServerMessage {
 pub enum QueueServerMessageResponse {
     SessionConnectedResponse(ConnectServerResponse),
     AddQueueItemResponse(AddQueueItemServerResponse),
+    RemoveQueueItemResponse(RemoveQueueItemServerResponse),
     FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
     ReadQueueItemsResponse(ReadQueueServerResponse),
     MoveQueueItemResponse(MoveQueueItemServerResponse),
@@ -106,6 +108,19 @@ pub struct AddQueueItemServerParams {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AddQueueItemServerResponse {
+    queue: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Message)]
+#[rtype(result = "Result<RemoveQueueItemServerResponse, ErrorResponse>")]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveQueueItemServerParams {
+    pub source_name: String,
+    pub index: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RemoveQueueItemServerResponse {
     queue: Vec<String>,
 }
 
@@ -395,6 +410,44 @@ impl Handler<AddQueueItemServerParams> for QueueServer {
         }
 
         Ok(AddQueueItemServerResponse {
+            queue: source
+                .queue()
+                .iter()
+                .map(|path| {
+                    path.file_stem()
+                        .unwrap_or(OsStr::new(""))
+                        .to_str()
+                        .map(|str| str.to_owned())
+                        .unwrap_or(String::new())
+                })
+                .collect(),
+        })
+    }
+}
+
+impl Handler<RemoveQueueItemServerParams> for QueueServer {
+    type Result = Result<RemoveQueueItemServerResponse, ErrorResponse>;
+    fn handle(
+        &mut self,
+        msg: RemoveQueueItemServerParams,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        info!("'RemoveQueueItem' handler received a message, MESSAGE: {msg:?}");
+
+        let RemoveQueueItemServerParams { source_name, index } = msg.clone();
+        let Some(source) = self.sources.get_mut(&source_name) else {
+            error!("no audio source with the name {source_name} found, SOURCES: {:?}", self.sources.keys());
+            return Err(ErrorResponse { error: format!("no audio source/source with the name {source_name} found") });
+        };
+
+        if let Err(err) = source.remove_from_queue(index, source_name) {
+            error!("failed to play correct audio after removing element from queue, MESSAGE: {msg:?}, ERROR: {err}");
+            return Err(ErrorResponse {
+                error: format!("failed to play correct audio after removing element, ERROR: {err}"),
+            });
+        }
+
+        Ok(RemoveQueueItemServerResponse {
             queue: source
                 .queue()
                 .iter()
