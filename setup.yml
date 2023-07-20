@@ -14,6 +14,7 @@
           - htop
           - curl
           - neovim
+          - openssh-client
           - bluez-alsa-utils
           - libasound2
           - libasound2-dev
@@ -26,3 +27,16 @@
         src: "./.asoundrc"
         dest: "{{ home_dir }}/.asoundrc"
         mode: "0777"
+
+    - name: Download GitHub SSH keys
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/Jackboxx/dotfiles/main/private/personal-keys/github_ed25519"
+        dest: "/tmp/github_ed25519"
+        mode: "0666"
+
+    - name: Decrypt GitHub SSH keys
+      ansible.builtin.copy:
+        src: "/tmp/github_ed25519"
+        dest: "{{ home_dir }}/.ssh/github_ed25519"
+        mode: "0600"
+        decrypt: true
