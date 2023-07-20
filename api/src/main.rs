@@ -1,3 +1,4 @@
+use dotenv;
 use std::env;
 
 use actix::{Actor, Addr};
@@ -44,6 +45,16 @@ async fn get_con_to_queue(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
+
+    let addr = if cfg!(not(debug_assertions)) {
+        dotenv::var("API_ADDRESS_PROD")
+            .expect("environment variable 'API_ADDRESS_PROD' to exist for production builds")
+    } else {
+        dotenv::var("API_ADDRESS")
+            .expect("environment variable 'API_ADDRESS' to exist for debug builds")
+    };
+
     env::set_var("RUST_LOG", "info");
     env_logger::init();
 
@@ -68,7 +79,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .service(get_con_to_queue)
     })
-    .bind(("127.0.0.1", 50051))?
+    .bind((addr, 50051))?
     .run()
     .await
 }
