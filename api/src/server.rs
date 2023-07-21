@@ -621,8 +621,10 @@ impl Handler<AddSourceServerParams> for QueueServer {
 
         let host = cpal::default_host();
         let device = host
-            .default_output_device()
-            .expect("no output device available");
+            .output_devices()
+            .expect("no output device available")
+            .find(|dev| dev.name().expect("device has no name") == source_name)
+            .expect("no device found");
 
         let mut supported_configs_range = device
             .supported_output_configs()

@@ -116,7 +116,7 @@
 				class="flex h-full cursor-pointer select-none items-center text-center"
 				role="button"
 				tabindex="0"
-				on:click={() => addSource('default')}
+				on:click={() => addSource('living_room')}
 				on:keydown={undefined}
 			>
 				<img class="w-[24px] invert lg:w-[32px]" src="/plus-square.svg" alt="+" />

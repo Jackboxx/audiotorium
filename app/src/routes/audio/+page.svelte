@@ -12,8 +12,6 @@
 		SessionConnectedResponse
 	} from '../../schema/messages/queueResponses';
 
-	console.log(PUBLIC_API_URL_WS);
-
 	let websocket: WebSocket;
 	let handlers: ResponseHandler[] = [
 		[
