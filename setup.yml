@@ -16,6 +16,8 @@
           - neovim
           - openssh-client
           - bluez-alsa-utils
+          - nodejs
+          - npm
           - libasound2
           - libasound2-dev
           - libudev-dev
