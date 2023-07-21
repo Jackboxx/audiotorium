@@ -18,11 +18,7 @@ mod downloader;
 mod server;
 mod session;
 
-pub static AUDIO_DIR: &str = if cfg!(not(debug_assertions)) {
-    "/home/lucifer/audio"
-} else {
-    "audio"
-};
+pub static AUDIO_DIR: &str = "audio";
 
 pub struct AppData {
     queue_server_addr: Addr<QueueServer>,
