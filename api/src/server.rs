@@ -633,7 +633,7 @@ impl Handler<AddSourceServerParams> for QueueServer {
         let supported_config = supported_configs_range
             .next()
             .expect("no supported config?!")
-            .with_sample_rate(cpal::SampleRate(16384 * 6));
+            .with_max_sample_rate();
         // but should
         // definitely look
         // into getting
