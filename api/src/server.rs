@@ -4,7 +4,10 @@ use std::path::Path;
 
 use actix::{Actor, ActorContext, Addr, AsyncContext, Context, Handler, Message, Recipient};
 
-use cpal::traits::{DeviceTrait, HostTrait};
+use cpal::{
+    traits::{DeviceTrait, HostTrait},
+    SampleRate,
+};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -635,8 +638,11 @@ impl Handler<AddSourceServerParams> for QueueServer {
             .expect("no supported config?!");
 
         let min_rate = supported_config.min_sample_rate();
+        let max_rate = supported_config.max_sample_rate();
 
-        let config = supported_config.with_sample_rate(min_rate).into();
+        let config = supported_config
+            .with_sample_rate(SampleRate((max_rate.0 + min_rate.0) / 2))
+            .into();
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.sources.insert(source_name, source);
 
