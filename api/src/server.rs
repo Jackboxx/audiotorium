@@ -632,15 +632,11 @@ impl Handler<AddSourceServerParams> for QueueServer {
 
         let supported_config = supported_configs_range
             .next()
-            .expect("no supported config?!")
-            .with_max_sample_rate();
-        // but should
-        // definitely look
-        // into getting
-        // the proper
-        // sample rate
+            .expect("no supported config?!");
 
-        let config = supported_config.into();
+        let min_rate = supported_config.min_sample_rate();
+
+        let config = supported_config.with_sample_rate(min_rate).into();
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.sources.insert(source_name, source);
 
