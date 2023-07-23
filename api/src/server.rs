@@ -641,7 +641,7 @@ impl Handler<AddSourceServerParams> for QueueServer {
         let max_rate = supported_config.max_sample_rate();
 
         let config = supported_config
-            .with_sample_rate(SampleRate((max_rate.0 + min_rate.0) / 2))
+            .with_sample_rate(SampleRate(max_rate.0 / 2 + min_rate.0 / 2))
             .into();
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.sources.insert(source_name, source);
