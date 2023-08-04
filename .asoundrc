@@ -5,7 +5,7 @@ pcm.office {
         }
         hint {
                 show on
-                description "speaker in lucy's office"
+                description "speaker in office #1 (Soundcore 3)"
         }
 }
 ctl.office {
