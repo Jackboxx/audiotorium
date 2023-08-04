@@ -1,13 +1,29 @@
 pcm.office {
         type plug
         slave {
-                pcm "hw:0,0"
+                pcm "dmix:PCH,0"
         }
+        hint {
+                show on
+                description "speaker in lucy's office"
+        }
+}
+ctl.office {
+        type dmix
 }
 
 pcm.living_room {
-        type bluealsa
-        device "3C:39:E7:BA:A2:22"
-        profile "a2dp"
- 
+        type plug
+        slave.pcm { 
+                type bluealsa
+                device "3C:39:E7:BA:A2:22"
+                profile "a2dp"
+        }
+        hint {
+                show on
+                description "bluetooth speaker in the living room"
+        }
+}
+ctl.living_room {
+            type bluealsa
 }
