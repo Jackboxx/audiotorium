@@ -396,6 +396,7 @@ impl Handler<AddQueueItemServerParams> for QueueServer {
                 &source_name,
             );
 
+            // TODO:
             // somehow this does not prevent the mailbox from being blocked even though this should
             // keep executing and not doing anything
             self.downloader_addr.do_send(DownloadAudio {
@@ -636,8 +637,6 @@ impl Handler<AddSourceServerParams> for QueueServer {
         let supported_config = supported_configs_range
             .next()
             .expect("no supported config?!");
-
-        dbg!(supported_config.sample_format());
 
         let config = supported_config.with_sample_rate(SampleRate(8000)).into();
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
