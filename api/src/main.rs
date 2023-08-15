@@ -1,6 +1,3 @@
-use audio::AudioSource;
-use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::SampleRate;
 use dotenv;
 use std::env;
 
@@ -67,46 +64,22 @@ async fn main() -> std::io::Result<()> {
     let queue_server = QueueServer::new(downloader_addr);
     let server_addr = queue_server.start();
 
-    let host = cpal::default_host();
-    let device = host
-        .output_devices()
-        .expect("no output device available")
-        .find(|dev| dev.name().expect("device has no name") == "living_room")
-        .expect("no device found");
+    let data = Data::new(AppData {
+        queue_server_addr: server_addr,
+    });
 
-    let mut supported_configs_range = device
-        .supported_output_configs()
-        .expect("error while querying configs");
+    HttpServer::new(move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header();
 
-    let supported_config = supported_configs_range
-        .next()
-        .expect("no supported config?!");
-
-    let config = supported_config.with_sample_rate(SampleRate(48000)).into();
-    let mut source = AudioSource::new(device, config, Vec::new(), server_addr);
-
-    source
-        .push_to_queue("audio/test.mp3".into(), "living_room".to_string())
-        .expect("oops something did went go fuck itself");
-
-    loop {}
-
-    // let data = Data::new(AppData {
-    //     queue_server_addr: server_addr,
-    // });
-
-    // HttpServer::new(move || {
-    //     let cors = Cors::default()
-    //         .allow_any_origin()
-    //         .allow_any_method()
-    //         .allow_any_header();
-
-    //     App::new()
-    //         .app_data(data.clone())
-    //         .wrap(cors)
-    //         .service(get_con_to_queue)
-    // })
-    // .bind((addr, 50051))?
-    // .run()
-    // .await
+        App::new()
+            .app_data(data.clone())
+            .wrap(cors)
+            .service(get_con_to_queue)
+    })
+    .bind((addr, 50051))?
+    .run()
+    .await
 }

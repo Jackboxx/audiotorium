@@ -20,6 +20,8 @@ use crate::{
     ErrorResponse, AUDIO_DIR,
 };
 
+const DEFAULT_SAMPLE_RATE: u32 = 48000;
+
 pub struct QueueServer {
     downloader_addr: Addr<AudioDownloader>,
     sources: HashMap<String, AudioSource>,
@@ -638,7 +640,13 @@ impl Handler<AddSourceServerParams> for QueueServer {
             .next()
             .expect("no supported config?!");
 
-        let config = supported_config.with_sample_rate(SampleRate(8000)).into();
+        let channel_count = 2; // I choose to make this assumption not because it is good
+                               // but because it is easy
+
+        let config = supported_config
+            .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
+            .into();
+
         let source = AudioSource::new(device, config, Vec::new(), ctx.address());
         self.sources.insert(source_name, source);
 
