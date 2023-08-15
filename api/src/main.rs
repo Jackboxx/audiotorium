@@ -49,10 +49,10 @@ async fn main() -> std::io::Result<()> {
 
     let addr = if cfg!(not(debug_assertions)) {
         dotenv::var("API_ADDRESS_PROD")
-            .expect("environment variable 'API_ADDRESS_PROD' to exist for production builds")
+            .expect("environment variable 'API_ADDRESS_PROD' should exist for production builds")
     } else {
         dotenv::var("API_ADDRESS")
-            .expect("environment variable 'API_ADDRESS' to exist for debug builds")
+            .expect("environment variable 'API_ADDRESS' should exist for debug builds")
     };
 
     env::set_var("RUST_LOG", "info");
