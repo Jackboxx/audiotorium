@@ -82,7 +82,7 @@ async fn main() -> std::io::Result<()> {
         .next()
         .expect("no supported config?!");
 
-    let config = supported_config.with_max_sample_rate().into();
+    let config = supported_config.with_sample_rate(SampleRate(48000)).into();
     let mut source = AudioSource::new(device, config, Vec::new(), server_addr);
 
     source
