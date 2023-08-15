@@ -82,14 +82,11 @@ async fn main() -> std::io::Result<()> {
         .next()
         .expect("no supported config?!");
 
-    let config = supported_config.with_sample_rate(SampleRate(8000)).into();
+    let config = supported_config.with_max_sample_rate().into();
     let mut source = AudioSource::new(device, config, Vec::new(), server_addr);
 
     source
-        .push_to_queue(
-            "api/audio/Foo Fighters - The Pretender.mp3".into(),
-            "living_room".to_string(),
-        )
+        .push_to_queue("audio/test.mp3".into(), "living_room".to_string())
         .expect("oops something did went go fuck itself");
 
     loop {}
