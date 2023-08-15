@@ -113,7 +113,7 @@
 >
 	<div class=" grid grid-cols-2 items-center justify-center gap-4 p-2">
 		<div class="flex w-full justify-center">
-			<span class="w-9/12 text-center">Source</span>
+			<span class="w-9/12 text-center">Device</span>
 		</div>
 		<div class="flex w-full justify-center">
 			<select
@@ -134,7 +134,7 @@
 		<div class="flex w-full justify-center">
 			<button
 				class="w-9/12 rounded-md bg-indigo-800"
-				on:click={() => sourceDialog.close(selectedSource)}>Ok</button
+				on:click={() => sourceDialog.close(selectedSource)}>Use</button
 			>
 		</div>
 	</div>
@@ -173,6 +173,6 @@
 	{#if sources.length > 0}
 		<Queue {queue} {sendWsMsg} bind:handlers />
 	{:else}
-		<div class="text-2xl font-bold text-red-500 lg:text-4xl">Add an audio source</div>
+		<div class="text-2xl font-bold text-red-500 lg:text-4xl">Add an audio device</div>
 	{/if}
 </div>
