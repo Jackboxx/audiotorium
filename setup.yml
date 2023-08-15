@@ -23,6 +23,7 @@
           - libasound2-dev
           - libudev-dev
           - pkg-config
+          - pipewire-alsa
       become: true
 
     - name: Copy ALSA config
