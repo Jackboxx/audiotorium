@@ -1,5 +1,5 @@
 use dotenv;
-use std::env;
+use log::LevelFilter;
 
 use actix::{Actor, Addr};
 use actix_cors::Cors;
@@ -55,8 +55,12 @@ async fn main() -> std::io::Result<()> {
             .expect("environment variable 'API_ADDRESS' should exist for debug builds")
     };
 
-    env::set_var("RUST_LOG", "info");
-    env_logger::init();
+    if cfg!(not(debug_assertions)) {
+        simple_logging::log_to_file("info.log", LevelFilter::Info)
+            .expect("logger should not fail to initialize");
+    } else {
+        simple_logging::log_to_stderr(LevelFilter::Info);
+    };
 
     let downloader = AudioDownloader::default();
     let downloader_addr = downloader.start();
