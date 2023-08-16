@@ -4,10 +4,6 @@ use std::path::Path;
 
 use actix::{Actor, ActorContext, Addr, AsyncContext, Context, Handler, Message, Recipient};
 
-use cpal::{
-    traits::{DeviceTrait, HostTrait},
-    SampleRate,
-};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 
@@ -17,10 +13,9 @@ use crate::{
         self, AudioDownloader, DownloadAudio, DownloadAudioResponse, NotifyDownloadFinished,
     },
     session::{FilteredPassThroughtMessage, QueueSessionPassThroughMessages},
-    ErrorResponse, AUDIO_DIR,
+    utils::create_source,
+    ErrorResponse, AUDIO_DIR, AUDIO_SOURCES,
 };
-
-const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 pub struct QueueServer {
     downloader_addr: Addr<AudioDownloader>,
@@ -35,7 +30,6 @@ pub enum QueueServerMessage {
     RemoveQueueItem(RemoveQueueItemServerParams),
     ReadQueueItems(ReadQueueServerParams),
     MoveQueueItem(MoveQueueItemServerParams),
-    AddSource(AddSourceServerParams),
     SetAudioProgress(SetAudioProgressServerParams),
     ReadSources(ReadSourcesServerParams),
     PauseQueue(PauseQueueServerParams),
@@ -56,7 +50,6 @@ pub enum QueueServerMessageResponse {
     FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
     ReadQueueItemsResponse(ReadQueueServerResponse),
     MoveQueueItemResponse(MoveQueueItemServerResponse),
-    AddSourceResponse(AddSourceServerResponse),
     ReadSourcesResponse(ReadSourcesServerResponse),
     SetAudioProgress(SetAudioProgressServerResponse),
     ReadSources(ReadSourcesServerResponse),
@@ -159,18 +152,6 @@ pub struct MoveQueueItemServerParams {
 #[derive(Debug, Clone, Serialize)]
 pub struct MoveQueueItemServerResponse {
     queue: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<AddSourceServerResponse, ErrorResponse>")]
-#[serde(rename_all = "camelCase")]
-pub struct AddSourceServerParams {
-    pub source_name: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AddSourceServerResponse {
-    sources: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
@@ -299,6 +280,11 @@ impl Actor for QueueServer {
         // check this if weird shit happens just trying stuff here
         ctx.set_mailbox_capacity(64);
         info!("stared new 'QueueServer', CONTEXT: {ctx:?}");
+
+        for (human_readable_name, source_name) in AUDIO_SOURCES {
+            let source = create_source(source_name, ctx.address());
+            self.sources.insert(human_readable_name.to_owned(), source);
+        }
 
         match self.downloader_addr.try_send(downloader::Connect {
             addr: ctx.address().into(),
@@ -614,45 +600,6 @@ impl Handler<MoveQueueItemServerParams> for QueueServer {
                 error: format!("no audio source with the name {source_name} found"),
             })
         }
-    }
-}
-
-impl Handler<AddSourceServerParams> for QueueServer {
-    type Result = Result<AddSourceServerResponse, ErrorResponse>;
-
-    fn handle(&mut self, msg: AddSourceServerParams, ctx: &mut Self::Context) -> Self::Result {
-        info!("'AddSource' handler received a message, MESSAGE: {msg:?}");
-
-        let AddSourceServerParams { source_name } = msg;
-
-        let host = cpal::default_host();
-        let device = host
-            .output_devices()
-            .expect("no output device available")
-            .find(|dev| dev.name().expect("device has no name") == source_name)
-            .expect("no device found");
-
-        let mut supported_configs_range = device
-            .supported_output_configs()
-            .expect("error while querying configs");
-
-        let supported_config = supported_configs_range
-            .next()
-            .expect("no supported config?!");
-
-        let channel_count = 2; // I choose to make this assumption not because it is good
-                               // but because it is easy
-
-        let config = supported_config
-            .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
-            .into();
-
-        let source = AudioSource::new(device, config, Vec::new(), ctx.address());
-        self.sources.insert(source_name, source);
-
-        Ok(AddSourceServerResponse {
-            sources: self.sources.keys().map(|key| key.to_owned()).collect(),
-        })
     }
 }
 

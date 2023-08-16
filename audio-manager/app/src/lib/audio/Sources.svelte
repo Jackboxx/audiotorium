@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type {
-		AddSourceMsg,
 		ReadQueueItemsMsg,
 		SetActiveSourceMsg
 	} from '../../schema/messages/queueMessages';
@@ -22,14 +21,7 @@
 
 	export let sources: string[];
 
-	const availableSources = new Map([
-		['Office', 'office'],
-		['Living Room', 'living_room']
-	]);
-
-	let sourceDialog: HTMLDialogElement;
 	let activeSource: string;
-	let selectedSource: string;
 	let queue: string[] = [];
 
 	onMount(() => {
@@ -71,11 +63,6 @@
 		handlers = handlers;
 	});
 
-	function addSource(sourceName: string) {
-		const msg: AddSourceMsg = ['ADD_SOURCE', { sourceName }];
-		sendWsMsg(msg);
-	}
-
 	function setActiceSource(sourceName: string) {
 		const msg: SetActiveSourceMsg = ['SET_ACTIVE_SOURCE', { sourceName }];
 		sendWsMsg(msg);
@@ -100,46 +87,6 @@
 	$: defaultToOnlySource(sources);
 </script>
 
-<dialog
-	class=" rounded-md bg-zinc-900 text-xl text-white
-    shadow-xl"
-	bind:this={sourceDialog}
-	on:close={() => {
-		const source = availableSources.get(sourceDialog.returnValue);
-		if (source) {
-			addSource(source);
-		}
-	}}
->
-	<div class=" grid grid-cols-2 items-center justify-center gap-4 p-2">
-		<div class="flex w-full justify-center">
-			<span class="w-9/12 text-center">Device</span>
-		</div>
-		<div class="flex w-full justify-center">
-			<select
-				class="w-9/12 truncate rounded border-[1px] border-neutral-400 bg-transparent p-1 text-center"
-				bind:value={selectedSource}
-			>
-				{#each availableSources.keys() as option}
-					<option>{option}</option>
-				{/each}
-			</select>
-		</div>
-		<div class="flex w-full justify-center">
-			<button
-				class="w-9/12 rounded-md bg-red-600"
-				on:click={() => sourceDialog.close(undefined)}>Cancel</button
-			>
-		</div>
-		<div class="flex w-full justify-center">
-			<button
-				class="w-9/12 rounded-md bg-indigo-800"
-				on:click={() => sourceDialog.close(selectedSource)}>Use</button
-			>
-		</div>
-	</div>
-</dialog>
-
 <div class="flex w-full flex-col lg:h-screen">
 	<div class="justify-left flex w-full items-start p-2">
 		<div class="scrollbar-hide flex items-center gap-1 overflow-x-scroll lg:gap-2">
@@ -159,15 +106,6 @@
 					{source}
 				</div>
 			{/each}
-			<div
-				class="flex h-full cursor-pointer select-none items-center text-center"
-				role="button"
-				tabindex="0"
-				on:click={() => sourceDialog.showModal()}
-				on:keydown={undefined}
-			>
-				<img class="w-[24px] invert lg:w-[32px]" src="/plus-square.svg" alt="+" />
-			</div>
 		</div>
 	</div>
 	{#if sources.length > 0}

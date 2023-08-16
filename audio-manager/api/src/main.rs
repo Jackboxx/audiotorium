@@ -17,8 +17,12 @@ mod audio;
 mod downloader;
 mod server;
 mod session;
+mod utils;
 
 pub static AUDIO_DIR: &str = "audio";
+
+pub static AUDIO_SOURCES: [(&str, &str); 2] =
+    [("Living Room", "living_room"), ("Office", "office")];
 
 pub struct AppData {
     queue_server_addr: Addr<QueueServer>,

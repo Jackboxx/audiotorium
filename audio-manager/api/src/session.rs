@@ -8,16 +8,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     server::{
-        AddQueueItemServerParams, AddSourceServerParams, Connect, Disconnect,
-        FinishedDownloadingAudioServerResponse, LoopBounds, LoopQueueServerParams,
-        MoveQueueItemServerParams, PauseQueueServerParams, PlayNextServerParams,
-        PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
+        AddQueueItemServerParams, Connect, Disconnect, FinishedDownloadingAudioServerResponse,
+        LoopBounds, LoopQueueServerParams, MoveQueueItemServerParams, PauseQueueServerParams,
+        PlayNextServerParams, PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
         QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
         ReadSourcesServerResponse, RemoveQueueItemServerParams, SetAudioProgressServerParams,
         UnPauseQueueServerParams,
     },
     ErrorResponse,
 };
+
 macro_rules! send_and_handle_queue_server_msg {
     ($enum:ident::$variant:ident, $msg_name: literal, $actor: tt, $msg: tt) => {{
         let addr = $actor.server_addr.clone();
@@ -83,7 +83,6 @@ pub enum QueueSessionMessage {
     RemoveQueueItem(RemoveQueueItemSessionParams),
     ReadQueueItems,
     MoveQueueItem(MoveQueueItemSessionParams),
-    AddSource(AddSourceSessionParams),
     SetAudioProgress(SetAudioProgressSessionParams),
     PauseQueue,
     UnPauseQueue,
@@ -144,12 +143,6 @@ pub struct PlaySelectedSessionParams {
 pub struct MoveQueueItemSessionParams {
     old_pos: usize,
     new_pos: usize,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AddSourceSessionParams {
-    pub source_name: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -347,20 +340,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                         let fut = send_and_handle_queue_server_msg!(
                             QueueServerMessageResponse::MoveQueueItemResponse,
                             "MoveQueueItemResponse",
-                            self,
-                            msg
-                        );
-
-                        ctx.spawn(fut);
-                    }
-                    Ok(QueueSessionMessage::AddSource(params)) => {
-                        let msg = AddSourceServerParams {
-                            source_name: params.source_name,
-                        };
-
-                        let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::AddSourceResponse,
-                            "AddSourceResponse",
                             self,
                             msg
                         );
