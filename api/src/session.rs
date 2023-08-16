@@ -34,7 +34,10 @@ macro_rules! send_and_handle_queue_server_msg {
                         );
                     }
                     Err(err_resp) => {
-                        ctx.text(serde_json::to_string(&err_resp).unwrap_or("{}".to_owned()));
+                        ctx.text(
+                            serde_json::to_string(&QueueSessionResponse::ErrorResponse(err_resp))
+                                .unwrap_or("{}".to_owned()),
+                        );
                     }
                 },
                 Err(err) => {
@@ -43,12 +46,14 @@ macro_rules! send_and_handle_queue_server_msg {
                         $msg_name
                     );
                     ctx.text(
-                        serde_json::to_string(&ErrorResponse {
-                            error: format!(
-                                "server failed to responde to message '{}', ERROR: {err}",
-                                $msg_name
-                            ),
-                        })
+                        serde_json::to_string(&QueueSessionResponse::ErrorResponse(
+                            ErrorResponse {
+                                error: format!(
+                                    "server failed to responde to message '{}', ERROR: {err}",
+                                    $msg_name
+                                ),
+                            },
+                        ))
                         .unwrap_or("{}".to_owned()),
                     );
                 }
@@ -93,6 +98,7 @@ pub enum QueueSessionMessage {
 #[allow(clippy::enum_variant_names)]
 pub enum QueueSessionResponse {
     SetActiveSourceResponse(SetActiveSourceSessionResponse),
+    ErrorResponse(ErrorResponse),
 }
 
 #[derive(Debug, Clone, Serialize)]

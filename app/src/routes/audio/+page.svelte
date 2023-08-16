@@ -9,11 +9,19 @@
 	import Sources from '$lib/audio/Sources.svelte';
 	import type {
 		AddSourceResponse,
+		ErrorResponse,
 		SessionConnectedResponse
 	} from '../../schema/messages/queueResponses';
+	import { toast } from '@zerodevx/svelte-toast';
 
 	let websocket: WebSocket;
 	let handlers: ResponseHandler[] = [
+		[
+			'ERROR_RESPONSE',
+			(data: ErrorResponse) => {
+				toast.push(data.error, { classes: ['error'] });
+			}
+		],
 		[
 			'SESSION_CONNECTED_RESPONSE',
 			(data: SessionConnectedResponse) => {
