@@ -15,6 +15,7 @@
           - htop
           - curl
           - neovim
+          - tmux
           - openssh-client
           - bluez-alsa-utils
           - nodejs
