@@ -17,7 +17,6 @@ use crate::{
     node_session::AudioNodeSession,
 };
 
-/// TODO: impl new method
 pub struct AudioNode {
     player: AudioPlayer,
     downloader_addr: Addr<AudioDownloader>,
@@ -55,7 +54,7 @@ pub enum NodeInternalMessage {
     PlayNext,
     PlayPrevious,
     PlaySelected(PlaySelectedNodeParams),
-    LoopQueue(LoopAudioBrainParams),
+    LoopQueue(LoopQueueNodeParams),
     SendClientQueueInfo(SendClientQueueInfoNodeParams),
 }
 
@@ -151,25 +150,39 @@ pub struct PlaySelectedNodeParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct LoopAudioBrainParams {
+pub struct LoopQueueNodeParams {
     pub bounds: Option<LoopBounds>,
 }
 
 impl AudioNode {
+    pub fn new(player: AudioPlayer, downloader_addr: Addr<AudioDownloader>) -> Self {
+        Self {
+            player,
+            downloader_addr,
+            sessions: HashMap::default(),
+        }
+    }
+
     fn multicast<M>(&self, msg: M)
     where
-        M: Message + Send,
+        M: Message + Send + Clone + 'static,
         M::Result: Send,
         AudioNodeSession: Handler<M>,
     {
-        for (_, addr) in self.sessions {
-            addr.do_send(msg);
+        for (_, addr) in &self.sessions {
+            addr.do_send(msg.clone());
         }
     }
 }
 
 impl Actor for AudioNode {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        log::info!("stared new 'AudioNode', CONTEXT: {ctx:?}");
+
+        self.player.set_addr(Some(ctx.address()))
+    }
 }
 
 impl Handler<NodeConnectMessage> for AudioNode {
@@ -196,7 +209,7 @@ impl Handler<NodeDisconnectMessage> for AudioNode {
 impl Handler<NotifyDownloadFinished> for AudioNode {
     type Result = ();
 
-    fn handle(&mut self, msg: NotifyDownloadFinished, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
         log::info!("'NotifyDownloadFinished' handler received a message, MESSAGE: {msg:?}");
 
         let msg = match msg.result {
@@ -229,14 +242,14 @@ impl Handler<NodeInternalMessage> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
     fn handle(&mut self, msg: NodeInternalMessage, ctx: &mut Self::Context) -> Self::Result {
-        match msg {
+        match &msg {
             NodeInternalMessage::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
                 let msg = NodeInternalResponse::AddQueueItemResponse(handle_add_queue_item(
                     self,
                     ctx.address().recipient(),
-                    params,
+                    params.clone(),
                 )?);
                 self.multicast(msg);
 
@@ -246,7 +259,8 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 log::info!("'RemoveQueueItem' handler received a message, MESSAGE: {msg:?}");
 
                 let msg = NodeInternalResponse::RemoveQueueItemResponse(handle_remove_queue_item(
-                    self, params,
+                    self,
+                    params.clone(),
                 )?);
                 self.multicast(msg);
 
@@ -264,7 +278,8 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 log::info!("'MoveQueueItem' handler received a message, MESSAGE: {msg:?}");
 
                 let msg = NodeInternalResponse::MoveQueueItemResponse(handle_move_queue_item(
-                    self, params,
+                    self,
+                    params.clone(),
                 ));
 
                 self.multicast(msg);
@@ -293,25 +308,33 @@ impl Handler<NodeInternalMessage> for AudioNode {
             NodeInternalMessage::PlayNext => {
                 log::info!("'PlayNext' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_next();
+                self.player.play_next().map_err(|err| ErrorResponse {
+                    error: err.to_string(),
+                })?;
                 Ok(())
             }
             NodeInternalMessage::PlayPrevious => {
                 log::info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_prev();
+                self.player.play_prev().map_err(|err| ErrorResponse {
+                    error: err.to_string(),
+                })?;
                 Ok(())
             }
             NodeInternalMessage::PlaySelected(params) => {
                 log::info!("'PlaySelected' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_selected(params.index);
+                self.player
+                    .play_selected(params.index)
+                    .map_err(|err| ErrorResponse {
+                        error: err.to_string(),
+                    })?;
                 Ok(())
             }
             NodeInternalMessage::LoopQueue(params) => {
                 log::info!("'LoopQueue' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.set_loop(params.bounds);
+                self.player.set_loop(params.bounds.clone());
                 Ok(())
             }
             NodeInternalMessage::SendClientQueueInfo(params) => {
@@ -320,7 +343,7 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 let msg = NodeInternalUpdateMessage::SendClientQueueQueueInfo(
                     SendClientQueueInfoNodeResponse {
                         playback_info: self.player.playback_info().clone(),
-                        processor_info: params.processor_info,
+                        processor_info: params.processor_info.clone(),
                     },
                 );
 
@@ -342,14 +365,7 @@ fn handle_add_queue_item(
     let path = Path::new(AUDIO_DIR).join(&title);
     let path_with_ext = path.clone().with_extension("mp3");
 
-    let sessions = node
-        .sessions
-        .iter()
-        .map(|(_k, v)| v.clone())
-        .collect::<Vec<_>>();
-
     if !path_with_ext.try_exists().unwrap_or(false) {
-        // TODO: inform sessions that download has started
         let msg = NodeInternalUpdateMessage::StartedDownloadingAudio;
         node.multicast(msg);
 

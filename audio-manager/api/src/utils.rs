@@ -1,15 +1,14 @@
-use actix::Addr;
 use cpal::{
     traits::{DeviceTrait, HostTrait},
     SampleRate,
 };
 
-use crate::{audio::AudioPlayer, server::AudioBrain};
+use crate::audio::AudioPlayer;
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 /// TODO: Handle errors
-pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioPlayer {
+pub fn create_player(source_name: &str) -> AudioPlayer {
     let host = cpal::default_host();
     let device = host
         .output_devices()
@@ -32,5 +31,5 @@ pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioP
         .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
         .into();
 
-    AudioPlayer::new(device, config, Vec::new(), server_addr)
+    AudioPlayer::new(device, config, Vec::new(), None)
 }

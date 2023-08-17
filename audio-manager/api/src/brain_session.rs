@@ -1,12 +1,11 @@
 use actix::{
-    Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
-    Message, Running, StreamHandler, WrapFuture,
+    Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Running,
+    StreamHandler, WrapFuture,
 };
 use actix_web_actors::ws;
-use log::{error, info};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use crate::{server::AudioBrain, ErrorResponse};
+use crate::brain::{AudioBrain, BrainConnect, BrainDisconnect};
 
 #[derive(Debug, Clone)]
 pub struct AudioBrainSession {
@@ -17,10 +16,15 @@ pub struct AudioBrainSession {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(clippy::enum_variant_names)]
+pub enum AudioBrainSessionResponse {
+    SessionConnectedResponse(Vec<String>),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[allow(clippy::enum_variant_names)]
 pub enum AudioBrainSessionUpdateMessage {
-    SourceInformationUpdate,
-    StartedDownloadingAudio,
-    FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
+    NodeInformationUpdate,
 }
 
 impl AudioBrainSession {
@@ -36,51 +40,58 @@ impl Actor for AudioBrainSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // info!("stared new 'AudioBrainSession'");
+        log::info!("stared new 'AudioBrainSession'");
 
-        // let addr = ctx.address();
-        // self.server_addr
-        //     .send(Connect {
-        //         addr: addr.recipient(),
-        //     })
-        //     .into_actor(self)
-        //     .then(|res, act, ctx| {
-        //         match res {
-        //             Ok(res) => match res {
-        //                 Ok(params) => {
-        //                     info!("'AudioBrainSession' connected");
-        //                     act.id = params.id;
+        let addr = ctx.address();
+        self.server_addr
+            .send(BrainConnect { addr })
+            .into_actor(self)
+            .then(|res, act, ctx| {
+                match res {
+                    Ok(params) => {
+                        log::info!("'AudioBrainSession' connected");
+                        act.id = params.id;
 
-        //                     ctx.text(
-        //                         serde_json::to_string(
-        //                             &AudioBrainMessageResponse::SessionConnectedResponse(params),
-        //                         )
-        //                         .unwrap_or("[]".to_owned()),
-        //                     );
-        //                 }
-        //                 Err(err) => {
-        //                     error!(
-        //                         "'AudioBrainSession' failed to connect to 'AudioBrain', ERROR: {err:?}"
-        //                     );
-        //                     ctx.stop();
-        //                 }
-        //             },
+                        ctx.text(
+                            serde_json::to_string(
+                                &AudioBrainSessionResponse::SessionConnectedResponse(
+                                    params.sources,
+                                ),
+                            )
+                            .unwrap_or(String::from("[]")),
+                        );
+                    }
 
-        //             Err(err) => {
-        //                 error!("'AudioBrainSession' failed to connect to 'AudioBrain', ERROR: {err}");
-        //                 ctx.stop();
-        //             }
-        //         }
+                    Err(err) => {
+                        log::error!(
+                            "'AudioBrainSession' failed to connect to 'AudioBrain', ERROR: {err}"
+                        );
+                        ctx.stop();
+                    }
+                }
 
-        //         actix::fut::ready(())
-        //     })
-        //     .wait(ctx);
+                actix::fut::ready(())
+            })
+            .wait(ctx);
     }
 
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
-        info!("'AudioBrainSession' stopping, ID: {}", self.id);
+        log::info!("'AudioBrainSession' stopping, ID: {}", self.id);
 
-        self.server_addr.do_send(Disconnect { id: self.id });
+        self.server_addr.do_send(BrainDisconnect { id: self.id });
         Running::Stop
+    }
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AudioBrainSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match &msg {
+            Ok(ws::Message::Text(_text)) => {}
+            Ok(ws::Message::Close(reason)) => {
+                ctx.close(reason.clone());
+                ctx.stop();
+            }
+            _ => {}
+        }
     }
 }

@@ -3,7 +3,6 @@ use std::{process::Command, path::PathBuf};
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use anyhow::anyhow;
-use log::{info, error};
 
 #[derive(Default)]
 pub struct AudioDownloader;
@@ -32,7 +31,7 @@ impl Actor for AudioDownloader {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("stared new 'AudioDownloader', CONTEXT: {ctx:?}");
+        log::info!("stared new 'AudioDownloader', CONTEXT: {ctx:?}");
     }
 }
 
@@ -43,13 +42,13 @@ impl Handler<DownloadAudio> for AudioDownloader {
         let DownloadAudio { addr, path, url }  = msg;
 
         let Some(str_path) = path.to_str() else { 
-            error!("path {path:?} can't be converted to a string");
+            log::error!("path {path:?} can't be converted to a string");
             addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: format!("failed to construct valid path") }) });
             return;
         };
 
         if let Err(err) = download_audio(&url, str_path) {
-            error!("failed to download video, URL: {url}, ERROR: {err}");
+            log::error!("failed to download video, URL: {url}, ERROR: {err}");
             addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: format!("failed to download video with url: {url}, ERROR: {err}") })});
             return;
         }

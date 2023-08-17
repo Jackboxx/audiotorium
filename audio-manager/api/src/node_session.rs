@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     audio::LoopBounds,
     node::{
-        AddQueueItemNodeParams, AudioNode, LoopAudioBrainParams, MoveQueueItemNodeParams,
+        AddQueueItemNodeParams, AudioNode, LoopQueueNodeParams, MoveQueueItemNodeParams,
         NodeConnectMessage, NodeDisconnectMessage, NodeInternalMessage, NodeInternalResponse,
         NodeInternalUpdateMessage, PlaySelectedNodeParams, RemoveQueueItemNodeParams,
         SetAudioProgressNodeParams,
@@ -44,12 +44,6 @@ pub enum NodeSessionWsMessage {
 pub enum NodeSessionWsResponse {
     SessionConnectedResponse(Vec<String>),
     ErrorResponse(ErrorResponse),
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum NodeSessionWsUpdate {
-    SendClientInformationSessionUpdate,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,7 +108,7 @@ impl Into<NodeInternalMessage> for NodeSessionWsMessage {
                 NodeInternalMessage::PlaySelected(PlaySelectedNodeParams { index })
             }
             Self::LoopQueue(LoopNodeSessionParams { bounds }) => {
-                NodeInternalMessage::LoopQueue(LoopAudioBrainParams { bounds })
+                NodeInternalMessage::LoopQueue(LoopQueueNodeParams { bounds })
             }
         }
     }
@@ -156,7 +150,7 @@ impl Actor for AudioNodeSession {
     }
 
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
-        info!("'AudioBrainSession' stopping, ID: {}", self.id);
+        info!("'AudioNodeSession' stopping, ID: {}", self.id);
 
         self.node_addr
             .do_send(NodeDisconnectMessage { id: self.id });
@@ -190,9 +184,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AudioNodeSession 
                 match serde_json::from_str::<NodeSessionWsMessage>(text) {
                     Ok(msg) => {
                         let addr = self.node_addr.clone();
-                        let node_msg: NodeInternalMessage = msg.into();
+                        let node_msg: NodeInternalMessage = msg.clone().into();
                         let fut = async move { addr.send(node_msg).await }.into_actor(self).map(
-                            |result, _, ctx| match result {
+                            move |result, _, ctx| match result {
                                 Ok(resp) => {
                                     ctx.text(serde_json::to_string(&resp).unwrap_or(String::from("{}")))
                                 }

@@ -62,7 +62,7 @@ pub struct AudioPlayer {
     config: StreamConfig,
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
-    node_addr: Addr<AudioNode>,
+    node_addr: Option<Addr<AudioNode>>,
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
@@ -99,7 +99,7 @@ impl AudioPlayer {
         device: Device,
         config: StreamConfig,
         queue: Vec<PathBuf>,
-        node_addr: Addr<AudioNode>,
+        node_addr: Option<Addr<AudioNode>>,
     ) -> Self {
         Self {
             device,
@@ -309,6 +309,10 @@ impl AudioPlayer {
         &self.playback_info
     }
 
+    pub fn set_addr(&mut self, node_addr: Option<Addr<AudioNode>>) {
+        self.node_addr = node_addr;
+    }
+
     fn play(&mut self, path: &Path) -> anyhow::Result<()> {
         let read_disk_stream =
             ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
@@ -326,7 +330,10 @@ impl AudioPlayer {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        if let Err(err) = addr.try_send(NodeInternalMessage::PlayNext) {
+                        if let Some(Err(err)) = addr
+                            .as_ref()
+                            .and_then(|addr| Some(addr.try_send(NodeInternalMessage::PlayNext)))
+                        {
                             error!("failed to play next audio in queue, ERROR: {err}");
                         }
                     }
@@ -337,11 +344,13 @@ impl AudioPlayer {
                             > processor.hard_rate_limit
                         {
                             processor.last_msg_sent_at = Instant::now();
-                            addr.do_send(NodeInternalMessage::SendClientQueueInfo(
-                                SendClientQueueInfoNodeParams {
-                                    processor_info: processor.info.clone(),
-                                },
-                            ));
+                            if let Some(addr) = &addr {
+                                addr.do_send(NodeInternalMessage::SendClientQueueInfo(
+                                    SendClientQueueInfoNodeParams {
+                                        processor_info: processor.info.clone(),
+                                    },
+                                ));
+                            }
                         }
                     }
                 },

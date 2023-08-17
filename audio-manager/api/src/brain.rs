@@ -1,41 +1,35 @@
 use std::collections::HashMap;
 
-use actix::{Actor, ActorContext, Addr, AsyncContext, Context, Handler, Message, Recipient};
+use actix::{Actor, Addr, Context, Handler, Message, MessageResponse};
 
-use log::{error, info};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{
-    audio::{AudioPlayer, PlaybackInfo, ProcessorInfo},
-    downloader::{
-        self, AudioDownloader, DownloadAudio, DownloadAudioResponse, NotifyDownloadFinished,
-    },
-    session::{AudioBrainSessionPassThroughMessages, FilteredPassThroughtMessage},
-    utils::create_source,
-    ErrorResponse, AUDIO_DIR, AUDIO_SOURCES,
+    brain_session::AudioBrainSession, downloader::AudioDownloader, node::AudioNode,
+    utils::create_player, AUDIO_SOURCES,
 };
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
-    sources: HashMap<String, AudioPlayer>,
-    sessions: HashMap<usize, Recipient<FilteredPassThroughtMessage>>,
+    nodes: HashMap<String, Addr<AudioNode>>,
+    sessions: HashMap<usize, Addr<AudioBrainSession>>,
 }
 
 #[derive(Debug, Clone, Message)]
-#[rtype(result = "Result<ConnectServerResponse, ()>")]
-pub struct Connect {
-    pub addr: Recipient<FilteredPassThroughtMessage>,
+#[rtype(result = "BrainConnectResponse")]
+pub struct BrainConnect {
+    pub addr: Addr<AudioBrainSession>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ConnectServerResponse {
+#[derive(Debug, Clone, Serialize, MessageResponse)]
+pub struct BrainConnectResponse {
     pub id: usize,
     pub sources: Vec<String>,
 }
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
-pub struct Disconnect {
+pub struct BrainDisconnect {
     pub id: usize,
 }
 
@@ -43,21 +37,19 @@ impl AudioBrain {
     pub fn new(downloader_addr: Addr<AudioDownloader>) -> Self {
         Self {
             downloader_addr,
-            sources: HashMap::default(),
+            nodes: HashMap::default(),
             sessions: HashMap::default(),
         }
     }
 
-    fn send_filtered_passthrought_msg(
-        sessions: &[Recipient<FilteredPassThroughtMessage>],
-        msg: String,
-        source_name: &str,
-    ) {
-        for addr in sessions {
-            addr.do_send(FilteredPassThroughtMessage {
-                msg: msg.clone(),
-                source_name: source_name.to_owned(),
-            });
+    fn multicast<M>(&self, msg: M)
+    where
+        M: Message + Send + Clone + 'static,
+        M::Result: Send,
+        AudioBrainSession: Handler<M>,
+    {
+        for (_, addr) in &self.sessions {
+            addr.do_send(msg.clone());
         }
     }
 }
@@ -68,44 +60,38 @@ impl Actor for AudioBrain {
     fn started(&mut self, ctx: &mut Self::Context) {
         // check this if weird shit happens just trying stuff here
         ctx.set_mailbox_capacity(64);
-        info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
+        log::info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
-            let source = create_source(source_name, ctx.address());
-            self.sources.insert(human_readable_name.to_owned(), source);
-        }
+            let player = create_player(source_name);
+            let node = AudioNode::new(player, self.downloader_addr.clone());
+            let node_addr = node.start();
 
-        match self.downloader_addr.try_send(downloader::Connect {
-            addr: ctx.address().into(),
-        }) {
-            Ok(_) => {}
-            Err(err) => {
-                error!("'AudioBrain' failed to connect to 'AudioDownloader', ERROR: {err}");
-                ctx.stop();
-            }
-        };
+            self.nodes.insert(human_readable_name.to_owned(), node_addr);
+        }
     }
 }
 
-impl Handler<Connect> for AudioBrain {
-    type Result = Result<ConnectServerResponse, ()>;
-    fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
-        let Connect { addr } = msg;
+impl Handler<BrainConnect> for AudioBrain {
+    type Result = BrainConnectResponse;
+
+    fn handle(&mut self, msg: BrainConnect, _ctx: &mut Self::Context) -> Self::Result {
+        let BrainConnect { addr } = msg;
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
 
         self.sessions.insert(id, addr);
 
-        Ok(ConnectServerResponse {
+        BrainConnectResponse {
             id,
-            sources: self.sources.keys().map(|key| key.to_owned()).collect(),
-        })
+            sources: self.nodes.keys().map(|key| key.to_owned()).collect(),
+        }
     }
 }
 
-impl Handler<Disconnect> for AudioBrain {
+impl Handler<BrainDisconnect> for AudioBrain {
     type Result = ();
-    fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
-        let Disconnect { id } = msg;
+    fn handle(&mut self, msg: BrainDisconnect, _ctx: &mut Self::Context) -> Self::Result {
+        let BrainDisconnect { id } = msg;
         self.sessions.remove(&id);
     }
 }
