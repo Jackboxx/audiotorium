@@ -4,12 +4,12 @@ use cpal::{
     SampleRate,
 };
 
-use crate::{audio::AudioSource, server::QueueServer};
+use crate::{audio::AudioSource, server::AudioBrain};
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 /// TODO: Handle errors
-pub fn create_source(source_name: &str, server_addr: Addr<QueueServer>) -> AudioSource {
+pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioSource {
     let host = cpal::default_host();
     let device = host
         .output_devices()

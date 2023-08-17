@@ -12,12 +12,12 @@ use crate::{
     downloader::{
         self, AudioDownloader, DownloadAudio, DownloadAudioResponse, NotifyDownloadFinished,
     },
-    session::{FilteredPassThroughtMessage, QueueSessionPassThroughMessages},
+    session::{FilteredPassThroughtMessage, AudioBrainSessionPassThroughMessages},
     utils::create_source,
     ErrorResponse, AUDIO_DIR, AUDIO_SOURCES,
 };
 
-pub struct QueueServer {
+pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
     sources: HashMap<String, AudioSource>,
     sessions: HashMap<usize, Recipient<FilteredPassThroughtMessage>>,
@@ -25,40 +25,40 @@ pub struct QueueServer {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum QueueServerMessage {
+pub enum AudioBrainMessage {
     AddQueueItem(AddQueueItemServerParams),
     RemoveQueueItem(RemoveQueueItemServerParams),
-    ReadQueueItems(ReadQueueServerParams),
+    ReadQueueItems(ReadAudioBrainParams),
     MoveQueueItem(MoveQueueItemServerParams),
     SetAudioProgress(SetAudioProgressServerParams),
     ReadSources(ReadSourcesServerParams),
-    PauseQueue(PauseQueueServerParams),
-    UnPauseQueue(UnPauseQueueServerParams),
+    PauseQueue(PauseAudioBrainParams),
+    UnPauseQueue(UnPauseAudioBrainParams),
     PlayNext(PlayNextServerParams),
     PlayPrevious(PlayPreviousServerParams),
     PlaySelected(PlaySelectedServerParams),
-    LoopQueue(LoopQueueServerParams),
+    LoopQueue(LoopAudioBrainParams),
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(clippy::enum_variant_names, dead_code)]
-pub enum QueueServerMessageResponse {
+pub enum AudioBrainMessageResponse {
     SessionConnectedResponse(ConnectServerResponse),
     AddQueueItemResponse(AddQueueItemServerResponse),
     RemoveQueueItemResponse(RemoveQueueItemServerResponse),
     FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
-    ReadQueueItemsResponse(ReadQueueServerResponse),
+    ReadQueueItemsResponse(ReadAudioBrainResponse),
     MoveQueueItemResponse(MoveQueueItemServerResponse),
     ReadSourcesResponse(ReadSourcesServerResponse),
     SetAudioProgress(SetAudioProgressServerResponse),
     ReadSources(ReadSourcesServerResponse),
-    PauseQueueResponse(PauseQueueServerResponse),
-    UnPauseQueueResponse(UnPauseQueueServerResponse),
+    PauseQueueResponse(PauseAudioBrainResponse),
+    UnPauseQueueResponse(UnPauseAudioBrainResponse),
     PlayNextResponse(PlayNextServerResponse),
     PlayPreviousResponse(PlayPreviousServerResponse),
     PlaySelectedResponse(PlaySelectedServerResponse),
-    LoopQueueResponse(LoopQueueServerResponse),
+    LoopQueueResponse(LoopAudioBrainResponse),
     SendClientQueueInfoResponse(SendClientQueueInfoServerResponse),
 }
 
@@ -129,14 +129,14 @@ pub struct FinishedDownloadingAudioServerResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<ReadQueueServerResponse, ErrorResponse>")]
+#[rtype(result = "Result<ReadAudioBrainResponse, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
-pub struct ReadQueueServerParams {
+pub struct ReadAudioBrainParams {
     pub source_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ReadQueueServerResponse {
+pub struct ReadAudioBrainResponse {
     queue: Vec<String>,
 }
 
@@ -176,26 +176,26 @@ pub struct ReadSourcesServerResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<PauseQueueServerResponse, ErrorResponse>")]
+#[rtype(result = "Result<PauseAudioBrainResponse, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
-pub struct PauseQueueServerParams {
+pub struct PauseAudioBrainParams {
     pub source_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PauseQueueServerResponse;
+pub struct PauseAudioBrainResponse;
 
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<UnPauseQueueServerResponse, ErrorResponse>")]
+#[rtype(result = "Result<UnPauseAudioBrainResponse, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
-pub struct UnPauseQueueServerParams {
+pub struct UnPauseAudioBrainParams {
     pub source_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UnPauseQueueServerResponse;
+pub struct UnPauseAudioBrainResponse;
 
 #[derive(Debug, Clone, Deserialize, Message)]
 #[rtype(result = "Result<PlayNextServerResponse, ErrorResponse>")]
@@ -239,18 +239,18 @@ pub struct LoopBounds {
 }
 
 #[derive(Debug, Clone, Deserialize, Message)]
-#[rtype(result = "Result<LoopQueueServerResponse, ErrorResponse>")]
+#[rtype(result = "Result<LoopAudioBrainResponse, ErrorResponse>")]
 #[serde(rename_all = "camelCase")]
-pub struct LoopQueueServerParams {
+pub struct LoopAudioBrainParams {
     pub source_name: String,
     pub bounds: Option<LoopBounds>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LoopQueueServerResponse;
+pub struct LoopAudioBrainResponse;
 
-impl QueueServer {
+impl AudioBrain {
     pub fn new(downloader_addr: Addr<AudioDownloader>) -> Self {
         Self {
             downloader_addr,
@@ -273,13 +273,13 @@ impl QueueServer {
     }
 }
 
-impl Actor for QueueServer {
+impl Actor for AudioBrain {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
         // check this if weird shit happens just trying stuff here
         ctx.set_mailbox_capacity(64);
-        info!("stared new 'QueueServer', CONTEXT: {ctx:?}");
+        info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
             let source = create_source(source_name, ctx.address());
@@ -291,14 +291,14 @@ impl Actor for QueueServer {
         }) {
             Ok(_) => {}
             Err(err) => {
-                error!("'QueueServer' failed to connect to 'AudioDownloader', ERROR: {err}");
+                error!("'AudioBrain' failed to connect to 'AudioDownloader', ERROR: {err}");
                 ctx.stop();
             }
         };
     }
 }
 
-impl Handler<Connect> for QueueServer {
+impl Handler<Connect> for AudioBrain {
     type Result = Result<ConnectServerResponse, ()>;
     fn handle(&mut self, msg: Connect, _ctx: &mut Self::Context) -> Self::Result {
         let Connect { addr } = msg;
@@ -313,7 +313,7 @@ impl Handler<Connect> for QueueServer {
     }
 }
 
-impl Handler<Disconnect> for QueueServer {
+impl Handler<Disconnect> for AudioBrain {
     type Result = ();
     fn handle(&mut self, msg: Disconnect, _ctx: &mut Self::Context) -> Self::Result {
         let Disconnect { id } = msg;
@@ -321,7 +321,7 @@ impl Handler<Disconnect> for QueueServer {
     }
 }
 
-impl Handler<SendClientQueueInfoParams> for QueueServer {
+impl Handler<SendClientQueueInfoParams> for AudioBrain {
     type Result = ();
 
     fn handle(&mut self, msg: SendClientQueueInfoParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -332,15 +332,14 @@ impl Handler<SendClientQueueInfoParams> for QueueServer {
         if let Some(source) = self.sources.get(&source_name) {
             for session in &self.sessions {
                 let addr = session.1;
-                let msg = serde_json::to_string(
-                    &QueueServerMessageResponse::SendClientQueueInfoResponse(
+                let msg =
+                    serde_json::to_string(&AudioBrainMessageResponse::SendClientQueueInfoResponse(
                         SendClientQueueInfoServerResponse {
                             playback_info: source.playback_info().clone(),
                             processor_info: processor_info.clone(),
                         },
-                    ),
-                )
-                .unwrap_or(String::new());
+                    ))
+                    .unwrap_or(String::new());
 
                 addr.do_send(FilteredPassThroughtMessage {
                     msg,
@@ -351,7 +350,7 @@ impl Handler<SendClientQueueInfoParams> for QueueServer {
     }
 }
 
-impl Handler<AddQueueItemServerParams> for QueueServer {
+impl Handler<AddQueueItemServerParams> for AudioBrain {
     type Result = Result<AddQueueItemServerResponse, ErrorResponse>;
 
     fn handle(&mut self, msg: AddQueueItemServerParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -377,9 +376,9 @@ impl Handler<AddQueueItemServerParams> for QueueServer {
             .collect::<Vec<_>>();
 
         if !path_with_ext.try_exists().unwrap_or(false) {
-            QueueServer::send_filtered_passthrought_msg(
+            AudioBrain::send_filtered_passthrought_msg(
                 &sessions,
-                serde_json::to_string(&QueueSessionPassThroughMessages::StartedDownloadingAudio)
+                serde_json::to_string(&AudioBrainSessionPassThroughMessages::StartedDownloadingAudio)
                     .unwrap_or(String::new()),
                 &source_name,
             );
@@ -417,7 +416,7 @@ impl Handler<AddQueueItemServerParams> for QueueServer {
     }
 }
 
-impl Handler<RemoveQueueItemServerParams> for QueueServer {
+impl Handler<RemoveQueueItemServerParams> for AudioBrain {
     type Result = Result<RemoveQueueItemServerResponse, ErrorResponse>;
     fn handle(
         &mut self,
@@ -455,7 +454,7 @@ impl Handler<RemoveQueueItemServerParams> for QueueServer {
     }
 }
 
-impl Handler<NotifyDownloadFinished> for QueueServer {
+impl Handler<NotifyDownloadFinished> for AudioBrain {
     type Result = ();
     fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
         info!("'NotifyDownloadFinished' handler received a message, MESSAGE: {msg:?}");
@@ -498,10 +497,10 @@ impl Handler<NotifyDownloadFinished> for QueueServer {
                     ),
                 };
 
-                QueueServer::send_filtered_passthrought_msg(
+                AudioBrain::send_filtered_passthrought_msg(
                     &sessions,
                     serde_json::to_string(
-                        &QueueSessionPassThroughMessages::FinishedDownloadingAudio(resp),
+                        &AudioBrainSessionPassThroughMessages::FinishedDownloadingAudio(resp),
                     )
                     .unwrap_or(String::new()),
                     &source_name,
@@ -513,10 +512,10 @@ impl Handler<NotifyDownloadFinished> for QueueServer {
                     queue: None,
                 };
 
-                QueueServer::send_filtered_passthrought_msg(
+                AudioBrain::send_filtered_passthrought_msg(
                     &sessions,
                     serde_json::to_string(
-                        &QueueSessionPassThroughMessages::FinishedDownloadingAudio(resp),
+                        &AudioBrainSessionPassThroughMessages::FinishedDownloadingAudio(resp),
                     )
                     .unwrap_or(String::new()),
                     &err_resp.0,
@@ -526,14 +525,14 @@ impl Handler<NotifyDownloadFinished> for QueueServer {
     }
 }
 
-impl Handler<ReadQueueServerParams> for QueueServer {
-    type Result = Result<ReadQueueServerResponse, ErrorResponse>;
-    fn handle(&mut self, msg: ReadQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+impl Handler<ReadAudioBrainParams> for AudioBrain {
+    type Result = Result<ReadAudioBrainResponse, ErrorResponse>;
+    fn handle(&mut self, msg: ReadAudioBrainParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'ReadQueueItems' handler received a message, MESSAGE: {msg:?}");
 
-        let ReadQueueServerParams { source_name } = msg;
+        let ReadAudioBrainParams { source_name } = msg;
         if let Some(source) = self.sources.get(&source_name) {
-            Ok(ReadQueueServerResponse {
+            Ok(ReadAudioBrainResponse {
                 queue: source
                     .queue()
                     .iter()
@@ -558,7 +557,7 @@ impl Handler<ReadQueueServerParams> for QueueServer {
     }
 }
 
-impl Handler<MoveQueueItemServerParams> for QueueServer {
+impl Handler<MoveQueueItemServerParams> for AudioBrain {
     type Result = Result<MoveQueueItemServerResponse, ErrorResponse>;
     fn handle(&mut self, msg: MoveQueueItemServerParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'MoveQueueItem' handler received a message, MESSAGE: {msg:?}");
@@ -603,7 +602,7 @@ impl Handler<MoveQueueItemServerParams> for QueueServer {
     }
 }
 
-impl Handler<ReadSourcesServerParams> for QueueServer {
+impl Handler<ReadSourcesServerParams> for AudioBrain {
     type Result = Result<ReadSourcesServerResponse, ErrorResponse>;
 
     fn handle(&mut self, _msg: ReadSourcesServerParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -613,7 +612,7 @@ impl Handler<ReadSourcesServerParams> for QueueServer {
     }
 }
 
-impl Handler<SetAudioProgressServerParams> for QueueServer {
+impl Handler<SetAudioProgressServerParams> for AudioBrain {
     type Result = Result<SetAudioProgressServerResponse, ErrorResponse>;
     fn handle(
         &mut self,
@@ -642,12 +641,12 @@ impl Handler<SetAudioProgressServerParams> for QueueServer {
     }
 }
 
-impl Handler<PauseQueueServerParams> for QueueServer {
-    type Result = Result<PauseQueueServerResponse, ErrorResponse>;
-    fn handle(&mut self, msg: PauseQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+impl Handler<PauseAudioBrainParams> for AudioBrain {
+    type Result = Result<PauseAudioBrainResponse, ErrorResponse>;
+    fn handle(&mut self, msg: PauseAudioBrainParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'PauseQueue' handler received a message, MESSAGE: {msg:?}");
 
-        let PauseQueueServerParams { source_name } = msg;
+        let PauseAudioBrainParams { source_name } = msg;
         if let Some(source) = self.sources.get_mut(&source_name) {
             source.set_stream_playback_state(crate::audio::PlaybackState::Paused)
         } else {
@@ -660,16 +659,16 @@ impl Handler<PauseQueueServerParams> for QueueServer {
             });
         }
 
-        Ok(PauseQueueServerResponse)
+        Ok(PauseAudioBrainResponse)
     }
 }
 
-impl Handler<UnPauseQueueServerParams> for QueueServer {
-    type Result = Result<UnPauseQueueServerResponse, ErrorResponse>;
-    fn handle(&mut self, msg: UnPauseQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+impl Handler<UnPauseAudioBrainParams> for AudioBrain {
+    type Result = Result<UnPauseAudioBrainResponse, ErrorResponse>;
+    fn handle(&mut self, msg: UnPauseAudioBrainParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'UnPauseQueue' handler received a message, MESSAGE: {msg:?}");
 
-        let UnPauseQueueServerParams { source_name } = msg;
+        let UnPauseAudioBrainParams { source_name } = msg;
         if let Some(source) = self.sources.get_mut(&source_name) {
             source.set_stream_playback_state(crate::audio::PlaybackState::Playing)
         } else {
@@ -682,11 +681,11 @@ impl Handler<UnPauseQueueServerParams> for QueueServer {
             });
         }
 
-        Ok(UnPauseQueueServerResponse)
+        Ok(UnPauseAudioBrainResponse)
     }
 }
 
-impl Handler<PlayNextServerParams> for QueueServer {
+impl Handler<PlayNextServerParams> for AudioBrain {
     type Result = Result<PlayNextServerResponse, ErrorResponse>;
 
     fn handle(&mut self, msg: PlayNextServerParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -715,7 +714,7 @@ impl Handler<PlayNextServerParams> for QueueServer {
     }
 }
 
-impl Handler<PlayPreviousServerParams> for QueueServer {
+impl Handler<PlayPreviousServerParams> for AudioBrain {
     type Result = Result<PlayPreviousServerResponse, ErrorResponse>;
 
     fn handle(&mut self, msg: PlayPreviousServerParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -744,7 +743,7 @@ impl Handler<PlayPreviousServerParams> for QueueServer {
     }
 }
 
-impl Handler<PlaySelectedServerParams> for QueueServer {
+impl Handler<PlaySelectedServerParams> for AudioBrain {
     type Result = Result<PlaySelectedServerResponse, ErrorResponse>;
 
     fn handle(&mut self, msg: PlaySelectedServerParams, _ctx: &mut Self::Context) -> Self::Result {
@@ -773,13 +772,13 @@ impl Handler<PlaySelectedServerParams> for QueueServer {
     }
 }
 
-impl Handler<LoopQueueServerParams> for QueueServer {
-    type Result = Result<LoopQueueServerResponse, ErrorResponse>;
+impl Handler<LoopAudioBrainParams> for AudioBrain {
+    type Result = Result<LoopAudioBrainResponse, ErrorResponse>;
 
-    fn handle(&mut self, msg: LoopQueueServerParams, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: LoopAudioBrainParams, _ctx: &mut Self::Context) -> Self::Result {
         info!("'LoopQueue' handler received a message, MESSAGE: {msg:?}");
 
-        let LoopQueueServerParams {
+        let LoopAudioBrainParams {
             source_name,
             bounds,
         } = msg;
@@ -796,6 +795,6 @@ impl Handler<LoopQueueServerParams> for QueueServer {
             });
         }
 
-        Ok(LoopQueueServerResponse)
+        Ok(LoopAudioBrainResponse)
     }
 }

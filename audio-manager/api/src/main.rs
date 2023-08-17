@@ -9,9 +9,9 @@ use actix_web_actors::ws;
 
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
-use server::QueueServer;
+use server::AudioBrain;
 
-use crate::session::QueueSession;
+use crate::session::AudioBrainSession;
 
 mod audio;
 mod downloader;
@@ -25,7 +25,7 @@ pub static AUDIO_SOURCES: [(&str, &str); 2] =
     [("Living Room", "living_room"), ("Office", "office")];
 
 pub struct AppData {
-    queue_server_addr: Addr<QueueServer>,
+    queue_server_addr: Addr<AudioBrain>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +41,7 @@ async fn get_con_to_queue(
     stream: web::Payload,
 ) -> impl Responder {
     ws::start(
-        QueueSession::new(data.queue_server_addr.clone()),
+        AudioBrainSession::new(data.queue_server_addr.clone()),
         &req,
         stream,
     )
@@ -69,7 +69,7 @@ async fn main() -> std::io::Result<()> {
     let downloader = AudioDownloader::default();
     let downloader_addr = downloader.start();
 
-    let queue_server = QueueServer::new(downloader_addr);
+    let queue_server = AudioBrain::new(downloader_addr);
     let server_addr = queue_server.start();
 
     let data = Data::new(AppData {

@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     server::{
-        AddQueueItemServerParams, Connect, Disconnect, FinishedDownloadingAudioServerResponse,
-        LoopBounds, LoopQueueServerParams, MoveQueueItemServerParams, PauseQueueServerParams,
-        PlayNextServerParams, PlayPreviousServerParams, PlaySelectedServerParams, QueueServer,
-        QueueServerMessageResponse, ReadQueueServerParams, ReadSourcesServerParams,
-        ReadSourcesServerResponse, RemoveQueueItemServerParams, SetAudioProgressServerParams,
-        UnPauseQueueServerParams,
+        AddQueueItemServerParams, AudioBrain, AudioBrainMessageResponse, Connect, Disconnect,
+        FinishedDownloadingAudioServerResponse, LoopAudioBrainParams, LoopBounds,
+        MoveQueueItemServerParams, PauseAudioBrainParams, PlayNextServerParams,
+        PlayPreviousServerParams, PlaySelectedServerParams, ReadAudioBrainParams,
+        ReadSourcesServerParams, ReadSourcesServerResponse, RemoveQueueItemServerParams,
+        SetAudioProgressServerParams, UnPauseAudioBrainParams,
     },
     ErrorResponse,
 };
@@ -28,15 +28,17 @@ macro_rules! send_and_handle_queue_server_msg {
                     Ok(res) => {
                         ctx.text(
                             serde_json::to_string(
-                                &$crate::server::QueueServerMessageResponse::$variant(res),
+                                &$crate::server::AudioBrainMessageResponse::$variant(res),
                             )
                             .unwrap_or("{}".to_owned()),
                         );
                     }
                     Err(err_resp) => {
                         ctx.text(
-                            serde_json::to_string(&QueueSessionResponse::ErrorResponse(err_resp))
-                                .unwrap_or("{}".to_owned()),
+                            serde_json::to_string(&AudioBrainSessionResponse::ErrorResponse(
+                                err_resp,
+                            ))
+                            .unwrap_or("{}".to_owned()),
                         );
                     }
                 },
@@ -46,7 +48,7 @@ macro_rules! send_and_handle_queue_server_msg {
                         $msg_name
                     );
                     ctx.text(
-                        serde_json::to_string(&QueueSessionResponse::ErrorResponse(
+                        serde_json::to_string(&AudioBrainSessionResponse::ErrorResponse(
                             ErrorResponse {
                                 error: format!(
                                     "server failed to responde to message '{}', ERROR: {err}",
@@ -62,10 +64,10 @@ macro_rules! send_and_handle_queue_server_msg {
 }
 
 #[derive(Debug, Clone)]
-pub struct QueueSession {
+pub struct AudioBrainSession {
     id: usize,
     active_source_name: String,
-    server_addr: Addr<QueueServer>,
+    server_addr: Addr<AudioBrain>,
 }
 
 #[derive(Message)]
@@ -77,7 +79,7 @@ pub struct FilteredPassThroughtMessage {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum QueueSessionMessage {
+pub enum AudioBrainSessionMessage {
     SetActiveSource(SetActiveSourceSessionParams),
     AddQueueItem(AddQueueItemSessionParams),
     RemoveQueueItem(RemoveQueueItemSessionParams),
@@ -89,20 +91,20 @@ pub enum QueueSessionMessage {
     PlayNext,
     PlayPrevious,
     PlaySelected(PlaySelectedSessionParams),
-    LoopQueue(LoopQueueSessionParams),
+    LoopQueue(LoopAudioBrainSessionParams),
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(clippy::enum_variant_names)]
-pub enum QueueSessionResponse {
+pub enum AudioBrainSessionResponse {
     SetActiveSourceResponse(SetActiveSourceSessionResponse),
     ErrorResponse(ErrorResponse),
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum QueueSessionPassThroughMessages {
+pub enum AudioBrainSessionPassThroughMessages {
     StartedDownloadingAudio,
     FinishedDownloadingAudio(FinishedDownloadingAudioServerResponse),
 }
@@ -153,12 +155,12 @@ pub struct SetAudioProgressSessionParams {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LoopQueueSessionParams {
+pub struct LoopAudioBrainSessionParams {
     pub bounds: Option<LoopBounds>,
 }
 
-impl QueueSession {
-    pub fn new(server_addr: Addr<QueueServer>) -> Self {
+impl AudioBrainSession {
+    pub fn new(server_addr: Addr<AudioBrain>) -> Self {
         Self {
             id: usize::MAX,
             active_source_name: String::new(),
@@ -167,11 +169,11 @@ impl QueueSession {
     }
 }
 
-impl Actor for QueueSession {
+impl Actor for AudioBrainSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("stared new 'QueueSession'");
+        info!("stared new 'AudioBrainSession'");
 
         let addr = ctx.address();
         self.server_addr
@@ -183,26 +185,26 @@ impl Actor for QueueSession {
                 match res {
                     Ok(res) => match res {
                         Ok(params) => {
-                            info!("'QueueSession' connected");
+                            info!("'AudioBrainSession' connected");
                             act.id = params.id;
 
                             ctx.text(
                                 serde_json::to_string(
-                                    &QueueServerMessageResponse::SessionConnectedResponse(params),
+                                    &AudioBrainMessageResponse::SessionConnectedResponse(params),
                                 )
                                 .unwrap_or("[]".to_owned()),
                             );
                         }
                         Err(err) => {
                             error!(
-                                "'QueueSession' failed to connect to 'QueueServer', ERROR: {err:?}"
+                                "'AudioBrainSession' failed to connect to 'AudioBrain', ERROR: {err:?}"
                             );
                             ctx.stop();
                         }
                     },
 
                     Err(err) => {
-                        error!("'QueueSession' failed to connect to 'QueueServer', ERROR: {err}");
+                        error!("'AudioBrainSession' failed to connect to 'AudioBrain', ERROR: {err}");
                         ctx.stop();
                     }
                 }
@@ -213,14 +215,14 @@ impl Actor for QueueSession {
     }
 
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
-        info!("'QueueSession' stopping, ID: {}", self.id);
+        info!("'AudioBrainSession' stopping, ID: {}", self.id);
 
         self.server_addr.do_send(Disconnect { id: self.id });
         Running::Stop
     }
 }
 
-impl Handler<FilteredPassThroughtMessage> for QueueSession {
+impl Handler<FilteredPassThroughtMessage> for AudioBrainSession {
     type Result = ();
     fn handle(
         &mut self,
@@ -235,12 +237,12 @@ impl Handler<FilteredPassThroughtMessage> for QueueSession {
     }
 }
 
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AudioBrainSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match &msg {
             Ok(ws::Message::Text(text)) => {
-                match serde_json::from_str::<QueueSessionMessage>(text) {
-                    Ok(QueueSessionMessage::SetActiveSource(params)) => {
+                match serde_json::from_str::<AudioBrainSessionMessage>(text) {
+                    Ok(AudioBrainSessionMessage::SetActiveSource(params)) => {
                         let msg = ReadSourcesServerParams {};
 
                         let addr = self.server_addr.clone();
@@ -255,7 +257,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                                         ctx.text(
                                             serde_json::to_string(
-                                                &QueueSessionResponse::SetActiveSourceResponse(
+                                                &AudioBrainSessionResponse::SetActiveSourceResponse(
                                                     SetActiveSourceSessionResponse {
                                                         source_name: act.active_source_name.clone(),
                                                     },
@@ -285,7 +287,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::AddQueueItem(params)) => {
+                    Ok(AudioBrainSessionMessage::AddQueueItem(params)) => {
                         let msg = AddQueueItemServerParams {
                             source_name: self.active_source_name.clone(),
                             title: params.title,
@@ -293,7 +295,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::AddQueueItemResponse,
+                            AudioBrainMessageResponse::AddQueueItemResponse,
                             "AddQueueItemResponse",
                             self,
                             msg
@@ -301,14 +303,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::RemoveQueueItem(params)) => {
+                    Ok(AudioBrainSessionMessage::RemoveQueueItem(params)) => {
                         let msg = RemoveQueueItemServerParams {
                             source_name: self.active_source_name.clone(),
                             index: params.index,
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::RemoveQueueItemResponse,
+                            AudioBrainMessageResponse::RemoveQueueItemResponse,
                             "RemoveQueueItemResponse",
                             self,
                             msg
@@ -316,13 +318,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::ReadQueueItems) => {
-                        let msg = ReadQueueServerParams {
+                    Ok(AudioBrainSessionMessage::ReadQueueItems) => {
+                        let msg = ReadAudioBrainParams {
                             source_name: self.active_source_name.clone(),
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::ReadQueueItemsResponse,
+                            AudioBrainMessageResponse::ReadQueueItemsResponse,
                             "ReadQueueItemsResponse",
                             self,
                             msg
@@ -330,7 +332,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::MoveQueueItem(params)) => {
+                    Ok(AudioBrainSessionMessage::MoveQueueItem(params)) => {
                         let msg = MoveQueueItemServerParams {
                             source_name: self.active_source_name.clone(),
                             old_pos: params.old_pos,
@@ -338,7 +340,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::MoveQueueItemResponse,
+                            AudioBrainMessageResponse::MoveQueueItemResponse,
                             "MoveQueueItemResponse",
                             self,
                             msg
@@ -346,14 +348,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::SetAudioProgress(params)) => {
+                    Ok(AudioBrainSessionMessage::SetAudioProgress(params)) => {
                         let msg = SetAudioProgressServerParams {
                             source_name: self.active_source_name.clone(),
                             progress: params.progress,
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::SetAudioProgress,
+                            AudioBrainMessageResponse::SetAudioProgress,
                             "SetAudioProgress",
                             self,
                             msg
@@ -361,13 +363,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::PauseQueue) => {
-                        let msg = PauseQueueServerParams {
+                    Ok(AudioBrainSessionMessage::PauseQueue) => {
+                        let msg = PauseAudioBrainParams {
                             source_name: self.active_source_name.clone(),
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::PauseQueueResponse,
+                            AudioBrainMessageResponse::PauseQueueResponse,
                             "PauseQueueResponse",
                             self,
                             msg
@@ -375,13 +377,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::UnPauseQueue) => {
-                        let msg = UnPauseQueueServerParams {
+                    Ok(AudioBrainSessionMessage::UnPauseQueue) => {
+                        let msg = UnPauseAudioBrainParams {
                             source_name: self.active_source_name.clone(),
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::UnPauseQueueResponse,
+                            AudioBrainMessageResponse::UnPauseQueueResponse,
                             "UnPauseQueueResponse",
                             self,
                             msg
@@ -389,13 +391,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::PlayNext) => {
+                    Ok(AudioBrainSessionMessage::PlayNext) => {
                         let msg = PlayNextServerParams {
                             source_name: self.active_source_name.clone(),
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::PlayNextResponse,
+                            AudioBrainMessageResponse::PlayNextResponse,
                             "PlayNextResponse",
                             self,
                             msg
@@ -403,13 +405,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::PlayPrevious) => {
+                    Ok(AudioBrainSessionMessage::PlayPrevious) => {
                         let msg = PlayPreviousServerParams {
                             source_name: self.active_source_name.clone(),
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::PlayPreviousResponse,
+                            AudioBrainMessageResponse::PlayPreviousResponse,
                             "PlayPreviousResponse",
                             self,
                             msg
@@ -417,14 +419,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::PlaySelected(params)) => {
+                    Ok(AudioBrainSessionMessage::PlaySelected(params)) => {
                         let msg = PlaySelectedServerParams {
                             source_name: self.active_source_name.clone(),
                             index: params.index,
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::PlaySelectedResponse,
+                            AudioBrainMessageResponse::PlaySelectedResponse,
                             "PlaySelectedResponse",
                             self,
                             msg
@@ -432,14 +434,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for QueueSession {
 
                         ctx.spawn(fut);
                     }
-                    Ok(QueueSessionMessage::LoopQueue(params)) => {
-                        let msg = LoopQueueServerParams {
+                    Ok(AudioBrainSessionMessage::LoopQueue(params)) => {
+                        let msg = LoopAudioBrainParams {
                             source_name: self.active_source_name.clone(),
                             bounds: params.bounds,
                         };
 
                         let fut = send_and_handle_queue_server_msg!(
-                            QueueServerMessageResponse::LoopQueueResponse,
+                            AudioBrainMessageResponse::LoopQueueResponse,
                             "LoopQueueResponse",
                             self,
                             msg

@@ -14,7 +14,7 @@ use log::error;
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
-use crate::server::{LoopBounds, PlayNextServerParams, QueueServer, SendClientQueueInfoParams};
+use crate::server::{AudioBrain, LoopBounds, PlayNextServerParams, SendClientQueueInfoParams};
 
 #[derive(Debug)]
 pub enum AudioStreamState {
@@ -55,7 +55,7 @@ pub struct AudioSource {
     config: StreamConfig,
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
-    server_addr: Addr<QueueServer>,
+    server_addr: Addr<AudioBrain>,
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
@@ -92,7 +92,7 @@ impl AudioSource {
         device: Device,
         config: StreamConfig,
         queue: Vec<PathBuf>,
-        server_addr: Addr<QueueServer>,
+        server_addr: Addr<AudioBrain>,
     ) -> Self {
         Self {
             device,
