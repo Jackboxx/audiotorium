@@ -14,7 +14,7 @@ use log::error;
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
-use crate::server::{AudioBrain, LoopBounds, PlayNextServerParams, SendClientQueueInfoParams};
+use crate::node::{AudioNode, NodeInternalMessage, SendClientQueueInfoNodeParams};
 
 #[derive(Debug)]
 pub enum AudioStreamState {
@@ -44,6 +44,13 @@ pub enum PlaybackState {
     Paused,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopBounds {
+    pub start: usize,
+    pub end: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum AudioProcessorMessage {
     SetState(PlaybackState),
@@ -55,7 +62,7 @@ pub struct AudioPlayer {
     config: StreamConfig,
     current_stream: Option<Stream>,
     queue: Vec<PathBuf>,
-    server_addr: Addr<AudioBrain>,
+    node_addr: Addr<AudioNode>,
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
@@ -92,7 +99,7 @@ impl AudioPlayer {
         device: Device,
         config: StreamConfig,
         queue: Vec<PathBuf>,
-        server_addr: Addr<AudioBrain>,
+        node_addr: Addr<AudioNode>,
     ) -> Self {
         Self {
             device,
@@ -100,7 +107,7 @@ impl AudioPlayer {
             current_stream: None,
             processor_msg_buffer: None,
             queue,
-            server_addr,
+            node_addr,
             queue_head: 0,
             playback_info: PlaybackInfo {
                 current_head_index: 0,
@@ -109,7 +116,7 @@ impl AudioPlayer {
         }
     }
 
-    pub fn play_next(&mut self, source_name: String) -> anyhow::Result<()> {
+    pub fn play_next(&mut self) -> anyhow::Result<()> {
         if self.queue.is_empty() {
             self.current_stream = None;
             return Ok(());
@@ -126,13 +133,13 @@ impl AudioPlayer {
         }
 
         if let Some(path) = self.get_path() {
-            self.play(&path, source_name)?;
+            self.play(&path)?;
         }
 
         Ok(())
     }
 
-    pub fn play_prev(&mut self, source_name: String) -> anyhow::Result<()> {
+    pub fn play_prev(&mut self) -> anyhow::Result<()> {
         if self.queue.is_empty() {
             self.current_stream = None;
             return Ok(());
@@ -157,13 +164,13 @@ impl AudioPlayer {
         self.update_queue_head(fake_queue_head as usize);
 
         if let Some(path) = self.get_path() {
-            self.play(&path, source_name)?;
+            self.play(&path)?;
         }
 
         Ok(())
     }
 
-    pub fn play_selected(&mut self, index: usize, source_name: String) -> anyhow::Result<()> {
+    pub fn play_selected(&mut self, index: usize) -> anyhow::Result<()> {
         if self.queue.is_empty() {
             self.current_stream = None;
             return Ok(());
@@ -182,7 +189,7 @@ impl AudioPlayer {
         self.update_queue_head(new_head_pos);
 
         if let Some(path) = self.get_path() {
-            self.play(&path, source_name)?;
+            self.play(&path)?;
         }
 
         Ok(())
@@ -225,16 +232,16 @@ impl AudioPlayer {
     }
 
     /// if this is the first song to be added to the queue starts playing immediately
-    pub fn push_to_queue(&mut self, path: PathBuf, source_name: String) -> anyhow::Result<()> {
+    pub fn push_to_queue(&mut self, path: PathBuf) -> anyhow::Result<()> {
         if self.queue.is_empty() {
-            self.play(&path, source_name)?;
+            self.play(&path)?;
         }
 
         self.queue.push(path);
         Ok(())
     }
 
-    pub fn remove_from_queue(&mut self, idx: usize, source_name: String) -> anyhow::Result<()> {
+    pub fn remove_from_queue(&mut self, idx: usize) -> anyhow::Result<()> {
         if idx >= self.queue.len() {
             return Err(anyhow!("index out of bounds, can not remove item"));
         }
@@ -242,7 +249,7 @@ impl AudioPlayer {
         self.queue.remove(idx);
 
         if self.queue.is_empty() {
-            self.play_next(source_name) // play nothing
+            self.play_next() // play nothing
         } else if idx == self.queue_head {
             if self.queue_head > 0 {
                 self.update_queue_head(self.queue_head - 1);
@@ -250,7 +257,7 @@ impl AudioPlayer {
                 self.update_queue_head(self.queue.len() - 1);
             }
 
-            self.play_next(source_name)
+            self.play_next()
         } else if idx < self.queue_head {
             // keep playing current
             self.update_queue_head(self.queue_head - 1);
@@ -302,7 +309,7 @@ impl AudioPlayer {
         &self.playback_info
     }
 
-    fn play(&mut self, path: &Path, source_name: String) -> anyhow::Result<()> {
+    fn play(&mut self, path: &Path) -> anyhow::Result<()> {
         let read_disk_stream =
             ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
 
@@ -311,7 +318,7 @@ impl AudioPlayer {
 
         let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
 
-        let addr = self.server_addr.clone();
+        let addr = self.node_addr.clone();
         let new_stream = self.device.build_output_stream(
             &self.config,
             move |data: &mut [f32], _| match processor.try_process(data) {
@@ -319,9 +326,7 @@ impl AudioPlayer {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        if let Err(err) = addr.try_send(PlayNextServerParams {
-                            source_name: source_name.clone(),
-                        }) {
+                        if let Err(err) = addr.try_send(NodeInternalMessage::PlayNext) {
                             error!("failed to play next audio in queue, ERROR: {err}");
                         }
                     }
@@ -332,10 +337,11 @@ impl AudioPlayer {
                             > processor.hard_rate_limit
                         {
                             processor.last_msg_sent_at = Instant::now();
-                            addr.do_send(SendClientQueueInfoParams {
-                                source_name: source_name.clone(),
-                                processor_info: processor.info.clone(),
-                            });
+                            addr.do_send(NodeInternalMessage::SendClientQueueInfo(
+                                SendClientQueueInfoNodeParams {
+                                    processor_info: processor.info.clone(),
+                                },
+                            ));
                         }
                     }
                 },

@@ -1,4 +1,6 @@
+use brain::AudioBrain;
 use dotenv;
+
 use log::LevelFilter;
 
 use actix::{Actor, Addr};
@@ -9,14 +11,15 @@ use actix_web_actors::ws;
 
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
-use server::AudioBrain;
 
-use crate::session::AudioBrainSession;
+use crate::brain_session::AudioBrainSession;
 
 mod audio;
+mod brain;
+mod brain_session;
 mod downloader;
-mod server;
-mod session;
+mod node;
+mod node_session;
 mod utils;
 
 pub static AUDIO_DIR: &str = "audio";
@@ -25,7 +28,7 @@ pub static AUDIO_SOURCES: [(&str, &str); 2] =
     [("Living Room", "living_room"), ("Office", "office")];
 
 pub struct AppData {
-    queue_server_addr: Addr<AudioBrain>,
+    brain_addr: Addr<AudioBrain>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +44,7 @@ async fn get_con_to_queue(
     stream: web::Payload,
 ) -> impl Responder {
     ws::start(
-        AudioBrainSession::new(data.queue_server_addr.clone()),
+        AudioBrainSession::new(data.brain_addr.clone()),
         &req,
         stream,
     )
@@ -73,7 +76,7 @@ async fn main() -> std::io::Result<()> {
     let server_addr = queue_server.start();
 
     let data = Data::new(AppData {
-        queue_server_addr: server_addr,
+        brain_addr: server_addr,
     });
 
     HttpServer::new(move || {
