@@ -4,12 +4,12 @@ use cpal::{
     SampleRate,
 };
 
-use crate::{audio::AudioSource, server::AudioBrain};
+use crate::{audio::AudioPlayer, server::AudioBrain};
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 /// TODO: Handle errors
-pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioSource {
+pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioPlayer {
     let host = cpal::default_host();
     let device = host
         .output_devices()
@@ -32,5 +32,5 @@ pub fn create_source(source_name: &str, server_addr: Addr<AudioBrain>) -> AudioS
         .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
         .into();
 
-    AudioSource::new(device, config, Vec::new(), server_addr)
+    AudioPlayer::new(device, config, Vec::new(), server_addr)
 }

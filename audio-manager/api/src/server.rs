@@ -8,18 +8,18 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio::{AudioSource, PlaybackInfo, ProcessorInfo},
+    audio::{AudioPlayer, PlaybackInfo, ProcessorInfo},
     downloader::{
         self, AudioDownloader, DownloadAudio, DownloadAudioResponse, NotifyDownloadFinished,
     },
-    session::{FilteredPassThroughtMessage, AudioBrainSessionPassThroughMessages},
+    session::{AudioBrainSessionPassThroughMessages, FilteredPassThroughtMessage},
     utils::create_source,
     ErrorResponse, AUDIO_DIR, AUDIO_SOURCES,
 };
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
-    sources: HashMap<String, AudioSource>,
+    sources: HashMap<String, AudioPlayer>,
     sessions: HashMap<usize, Recipient<FilteredPassThroughtMessage>>,
 }
 
@@ -378,8 +378,10 @@ impl Handler<AddQueueItemServerParams> for AudioBrain {
         if !path_with_ext.try_exists().unwrap_or(false) {
             AudioBrain::send_filtered_passthrought_msg(
                 &sessions,
-                serde_json::to_string(&AudioBrainSessionPassThroughMessages::StartedDownloadingAudio)
-                    .unwrap_or(String::new()),
+                serde_json::to_string(
+                    &AudioBrainSessionPassThroughMessages::StartedDownloadingAudio,
+                )
+                .unwrap_or(String::new()),
                 &source_name,
             );
 

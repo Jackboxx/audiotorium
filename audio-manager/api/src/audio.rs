@@ -50,7 +50,7 @@ pub enum AudioProcessorMessage {
     SetProgress(f64),
 }
 
-pub struct AudioSource {
+pub struct AudioPlayer {
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
@@ -87,7 +87,7 @@ impl AudioProcessor {
     }
 }
 
-impl AudioSource {
+impl AudioPlayer {
     pub fn new(
         device: Device,
         config: StreamConfig,
