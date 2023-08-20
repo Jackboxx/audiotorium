@@ -4,7 +4,7 @@ use actix::Addr;
 use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
-    Device, Stream, StreamConfig,
+    Device, Stream, StreamConfig, StreamError,
 };
 use creek::{ReadDiskStream, SymphoniaDecoder};
 use log::error;
@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     audio_item::{AudioDataLocator, AudioPlayerQueueItem},
-    node::{AudioNode, NodeInternalMessage, SendClientQueueInfoNodeParams},
+    node::{
+        AudioNode, AudioNodeHealth, NodeInternalMessage, SendClientQueueInfoNodeParams,
+        UpdateNodeHealthParams,
+    },
 };
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
@@ -301,6 +304,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
 
         let addr = self.node_addr.clone();
+        let addr_for_err = self.node_addr.clone(); // I don't care
         let new_stream = self.device.build_output_stream(
             &self.config,
             move |data: &mut [f32], _| match processor.try_process(data) {
@@ -312,10 +316,13 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                             .as_ref()
                             .and_then(|addr| Some(addr.try_send(NodeInternalMessage::PlayNext)))
                         {
+                            // TODO: health update
                             error!("failed to play next audio in queue, ERROR: {err}");
                         }
                     }
-                    AudioStreamState::Buffering => {}
+                    AudioStreamState::Buffering => {
+                        // TODO: health update
+                    }
                     AudioStreamState::Playing => {
                         // prevent message spam from filling up mailbox of the server
                         if Instant::now().duration_since(processor.last_msg_sent_at)
@@ -332,9 +339,28 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         }
                     }
                 },
-                Err(err) => error!("failed to process audio, ERROR: {err}"),
+                Err(err) => {
+                    // TODO: health update
+                    error!("failed to process audio, ERROR: {err}");
+                }
             },
-            move |err| error!("failed to process audio, ERROR: {err}"),
+            move |err| {
+                error!("failed to process audio, ERROR: {err}");
+                if let Some(addr) = &addr_for_err {
+                    match err {
+                        StreamError::DeviceNotAvailable => addr.do_send(
+                            NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                                health: AudioNodeHealth::DeviceNotAvailable,
+                            }),
+                        ),
+                        StreamError::BackendSpecific { err } => addr.do_send(
+                            NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                                health: AudioNodeHealth::AudioBackendError(err.description),
+                            }),
+                        ),
+                    }
+                }
+            },
             None,
         )?;
 
@@ -388,7 +414,7 @@ impl AudioProcessor {
                 return Ok(AudioStreamState::Playing);
             }
 
-            if !read_disk_stream.is_ready()? {
+            if !read_disk_stream.is_ready().unwrap_or(false) {
                 stream_state = AudioStreamState::Buffering;
                 cache_missed_this_cycle = true;
             }

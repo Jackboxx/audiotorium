@@ -5,7 +5,7 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageRespons
 use serde::Serialize;
 
 use crate::{
-    brain_session::AudioBrainSession,
+    brain_session::{AudioBrainSession, AudioBrainSessionUpdateMessage},
     downloader::AudioDownloader,
     node::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     utils::create_player,
@@ -16,6 +16,12 @@ pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
     nodes: HashMap<String, (Addr<AudioNode>, AudioNodeInfo)>,
     sessions: HashMap<usize, Addr<AudioBrainSession>>,
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub enum AudioBrainUpdateMessages {
+    NodeHealthUpdate((String, AudioNodeHealth)),
 }
 
 #[derive(Debug, Clone, Message)]
@@ -67,7 +73,12 @@ impl Actor for AudioBrain {
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
             let player = create_player(source_name);
-            let node = AudioNode::new(player, ctx.address(), self.downloader_addr.clone());
+            let node = AudioNode::new(
+                source_name.to_owned(),
+                player,
+                ctx.address(),
+                self.downloader_addr.clone(),
+            );
             let node_addr = node.start();
 
             self.nodes.insert(
@@ -110,5 +121,30 @@ impl Handler<BrainDisconnect> for AudioBrain {
     fn handle(&mut self, msg: BrainDisconnect, _ctx: &mut Self::Context) -> Self::Result {
         let BrainDisconnect { id } = msg;
         self.sessions.remove(&id);
+    }
+}
+
+impl Handler<AudioBrainUpdateMessages> for AudioBrain {
+    type Result = ();
+
+    fn handle(&mut self, msg: AudioBrainUpdateMessages, _ctx: &mut Self::Context) -> Self::Result {
+        match &msg {
+            AudioBrainUpdateMessages::NodeHealthUpdate(params) => {
+                let (source_name, health) = params;
+
+                if let Some((_, node_info)) = self.nodes.get_mut(source_name) {
+                    node_info.health = health.clone();
+
+                    let msg = AudioBrainSessionUpdateMessage::NodeInformationUpdate(
+                        self.nodes
+                            .values()
+                            .map(|(_, info)| info.to_owned())
+                            .collect(),
+                    );
+
+                    self.multicast(msg)
+                }
+            }
+        }
     }
 }

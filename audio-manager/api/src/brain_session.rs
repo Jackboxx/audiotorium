@@ -1,6 +1,6 @@
 use actix::{
-    Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Running,
-    StreamHandler, WrapFuture,
+    Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
+    Message, Running, StreamHandler, WrapFuture,
 };
 
 use actix_web_actors::ws;
@@ -24,11 +24,12 @@ pub enum AudioBrainSessionResponse {
     SessionConnectedResponse(Vec<AudioNodeInfo>),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Message)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[rtype(result = "()")]
 #[allow(clippy::enum_variant_names)]
 pub enum AudioBrainSessionUpdateMessage {
-    NodeInformationUpdate,
+    NodeInformationUpdate(Vec<AudioNodeInfo>),
 }
 
 impl AudioBrainSession {
@@ -84,6 +85,19 @@ impl Actor for AudioBrainSession {
 
         self.server_addr.do_send(BrainDisconnect { id: self.id });
         Running::Stop
+    }
+}
+
+impl Handler<AudioBrainSessionUpdateMessage> for AudioBrainSession {
+    type Result = ();
+
+    /// used to receive multicast messages from nodes
+    fn handle(
+        &mut self,
+        msg: AudioBrainSessionUpdateMessage,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        ctx.text(serde_json::to_string(&msg).unwrap_or(String::from("{}")))
     }
 }
 

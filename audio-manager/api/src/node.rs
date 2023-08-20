@@ -1,7 +1,7 @@
 use crate::{
     audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
     audio_player::{AudioPlayer, LoopBounds, PlaybackInfo, PlaybackState, ProcessorInfo},
-    brain::AudioBrain,
+    brain::{AudioBrain, AudioBrainUpdateMessages},
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
     node_session::AudioNodeSession,
     ErrorResponse, AUDIO_DIR,
@@ -15,6 +15,7 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageRespons
 use serde::Serialize;
 
 pub struct AudioNode {
+    source_name: String,
     player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
     server_addr: Addr<AudioBrain>,
@@ -32,7 +33,8 @@ pub struct AudioNodeInfo {
 #[derive(Debug, Clone, Serialize)]
 pub enum AudioNodeHealth {
     Good,
-    DeviceNotConnected,
+    DeviceNotAvailable,
+    AudioBackendError(String),
 }
 
 #[derive(Debug, Clone, Message)]
@@ -68,6 +70,7 @@ pub enum NodeInternalMessage {
     PlaySelected(PlaySelectedNodeParams),
     LoopQueue(LoopQueueNodeParams),
     SendClientQueueInfo(SendClientQueueInfoNodeParams),
+    UpdateHealth(UpdateNodeHealthParams),
 }
 
 #[allow(clippy::enum_variant_names, dead_code)]
@@ -94,6 +97,11 @@ pub enum NodeInternalUpdateMessage {
 #[derive(Debug, Clone)]
 pub struct SendClientQueueInfoNodeParams {
     pub processor_info: ProcessorInfo,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateNodeHealthParams {
+    pub health: AudioNodeHealth,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -168,11 +176,13 @@ pub struct LoopQueueNodeParams {
 
 impl AudioNode {
     pub fn new(
+        source_name: String,
         player: AudioPlayer<PathBuf>,
         server_addr: Addr<AudioBrain>,
         downloader_addr: Addr<AudioDownloader>,
     ) -> Self {
         Self {
+            source_name,
             player,
             downloader_addr,
             server_addr,
@@ -366,6 +376,17 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 );
 
                 self.multicast(msg);
+
+                Ok(())
+            }
+            NodeInternalMessage::UpdateHealth(params) => {
+                self.health = params.health.clone();
+
+                self.server_addr
+                    .do_send(AudioBrainUpdateMessages::NodeHealthUpdate((
+                        self.source_name.to_owned(),
+                        params.health.clone(),
+                    )));
 
                 Ok(())
             }
