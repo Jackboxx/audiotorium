@@ -28,7 +28,7 @@ pub enum AudioBrainSessionResponse {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[rtype(result = "()")]
 #[allow(clippy::enum_variant_names)]
-pub enum AudioBrainSessionUpdateMessage {
+pub enum AudioBrainSessionInternalUpdateMessage {
     NodeInformationUpdate(Vec<AudioNodeInfo>),
 }
 
@@ -88,13 +88,13 @@ impl Actor for AudioBrainSession {
     }
 }
 
-impl Handler<AudioBrainSessionUpdateMessage> for AudioBrainSession {
+impl Handler<AudioBrainSessionInternalUpdateMessage> for AudioBrainSession {
     type Result = ();
 
     /// used to receive multicast messages from nodes
     fn handle(
         &mut self,
-        msg: AudioBrainSessionUpdateMessage,
+        msg: AudioBrainSessionInternalUpdateMessage,
         ctx: &mut Self::Context,
     ) -> Self::Result {
         ctx.text(serde_json::to_string(&msg).unwrap_or(String::from("{}")))

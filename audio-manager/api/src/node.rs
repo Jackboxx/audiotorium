@@ -1,7 +1,7 @@
 use crate::{
     audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
     audio_player::{AudioPlayer, LoopBounds, PlaybackInfo, PlaybackState, ProcessorInfo},
-    brain::{AudioBrain, AudioBrainUpdateMessages},
+    brain::{AudioBrain, AudioBrainInternalUpdateMessages},
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
     node_session::AudioNodeSession,
     ErrorResponse, AUDIO_DIR,
@@ -395,7 +395,7 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 self.health = params.health.clone();
 
                 self.server_addr
-                    .do_send(AudioBrainUpdateMessages::NodeHealthUpdate((
+                    .do_send(AudioBrainInternalUpdateMessages::NodeHealthUpdate((
                         self.source_name.to_owned(),
                         params.health.clone(),
                     )));
