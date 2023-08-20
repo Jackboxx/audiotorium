@@ -2,10 +2,14 @@ use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Running,
     StreamHandler, WrapFuture,
 };
+
 use actix_web_actors::ws;
 use serde::Serialize;
 
-use crate::brain::{AudioBrain, BrainConnect, BrainDisconnect};
+use crate::{
+    brain::{AudioBrain, BrainConnect, BrainDisconnect},
+    node::AudioNodeInfo,
+};
 
 #[derive(Debug, Clone)]
 pub struct AudioBrainSession {
@@ -17,7 +21,7 @@ pub struct AudioBrainSession {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[allow(clippy::enum_variant_names)]
 pub enum AudioBrainSessionResponse {
-    SessionConnectedResponse(Vec<String>),
+    SessionConnectedResponse(Vec<AudioNodeInfo>),
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -1,5 +1,5 @@
-use crate::ErrorResponse;
-use std::{process::Command, path::PathBuf};
+use crate::{ErrorResponse, audio_item::{AudioPlayerQueueItem, AudioMetaData}};
+use std::{process::Command, path::PathBuf };
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use anyhow::anyhow;
@@ -24,7 +24,7 @@ pub struct DownloadAudio {
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
 pub struct DownloadAudioResponse {
-    pub path: PathBuf,
+    pub item: AudioPlayerQueueItem<PathBuf>,
 }
 
 impl Actor for AudioDownloader {
@@ -54,7 +54,17 @@ impl Handler<DownloadAudio> for AudioDownloader {
         }
 
         let path_with_ext = path.with_extension("mp3");
-        addr.do_send(NotifyDownloadFinished { result: Ok(DownloadAudioResponse { path: path_with_ext }) });
+        let item = AudioPlayerQueueItem {
+            metadata: AudioMetaData {
+                name: path.file_stem().map(|os_str| os_str.to_string_lossy().to_string()).unwrap_or(String::new()),
+                author: None,
+                duration: None,
+                thumbnail_url: None
+            },
+            locator: path_with_ext,
+        };
+
+        addr.do_send(NotifyDownloadFinished { result: Ok(DownloadAudioResponse { item }) });
     }
 }
 

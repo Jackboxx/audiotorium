@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use actix::Addr;
 use anyhow::anyhow;
@@ -14,13 +11,30 @@ use log::error;
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
-use crate::node::{AudioNode, NodeInternalMessage, SendClientQueueInfoNodeParams};
+use crate::{
+    audio_item::{AudioDataLocator, AudioPlayerQueueItem},
+    node::{AudioNode, NodeInternalMessage, SendClientQueueInfoNodeParams},
+};
 
-#[derive(Debug)]
-pub enum AudioStreamState {
-    Playing,
-    Buffering,
-    Finished,
+pub struct AudioPlayer<ADL: AudioDataLocator> {
+    device: Device,
+    config: StreamConfig,
+    current_stream: Option<Stream>,
+    queue: Vec<AudioPlayerQueueItem<ADL>>,
+    node_addr: Option<Addr<AudioNode>>,
+    processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
+    queue_head: usize,
+    loop_start_end: Option<(usize, usize)>,
+    playback_info: PlaybackInfo,
+}
+
+struct AudioProcessor {
+    msg_buffer: Consumer<AudioProcessorMessage>,
+    read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+    had_cache_miss_last_cycle: bool,
+    last_msg_sent_at: Instant,
+    hard_rate_limit: Duration,
+    info: ProcessorInfo,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -34,6 +48,13 @@ pub struct PlaybackInfo {
 pub struct ProcessorInfo {
     playback_state: PlaybackState,
     audio_progress: f64,
+}
+
+#[derive(Debug)]
+pub enum AudioStreamState {
+    Playing,
+    Buffering,
+    Finished,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,56 +78,14 @@ pub enum AudioProcessorMessage {
     SetProgress(f64),
 }
 
-pub struct AudioPlayer {
-    device: Device,
-    config: StreamConfig,
-    current_stream: Option<Stream>,
-    queue: Vec<PathBuf>,
-    node_addr: Option<Addr<AudioNode>>,
-    processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
-    queue_head: usize,
-    loop_start_end: Option<(usize, usize)>,
-    playback_info: PlaybackInfo,
-}
-
-pub struct AudioProcessor {
-    msg_buffer: Consumer<AudioProcessorMessage>,
-    read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
-    had_cache_miss_last_cycle: bool,
-    last_msg_sent_at: Instant,
-    hard_rate_limit: Duration,
-    info: ProcessorInfo,
-}
-
-impl AudioProcessor {
-    fn new(
-        msg_buffer: Consumer<AudioProcessorMessage>,
-        read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
-    ) -> Self {
-        Self {
-            msg_buffer,
-            read_disk_stream,
-            had_cache_miss_last_cycle: false,
-            last_msg_sent_at: Instant::now(),
-            hard_rate_limit: Duration::from_millis(33),
-            info: ProcessorInfo::default(),
-        }
-    }
-}
-
-impl AudioPlayer {
-    pub fn new(
-        device: Device,
-        config: StreamConfig,
-        queue: Vec<PathBuf>,
-        node_addr: Option<Addr<AudioNode>>,
-    ) -> Self {
+impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
+    pub fn new(device: Device, config: StreamConfig, node_addr: Option<Addr<AudioNode>>) -> Self {
         Self {
             device,
             config,
+            queue: Vec::new(),
             current_stream: None,
             processor_msg_buffer: None,
-            queue,
             node_addr,
             queue_head: 0,
             playback_info: PlaybackInfo {
@@ -132,8 +111,8 @@ impl AudioPlayer {
             self.update_queue_head(0);
         }
 
-        if let Some(path) = self.get_path() {
-            self.play(&path)?;
+        if let Some(locator) = self.get_locator() {
+            self.play(&locator)?;
         }
 
         Ok(())
@@ -163,8 +142,8 @@ impl AudioPlayer {
 
         self.update_queue_head(fake_queue_head as usize);
 
-        if let Some(path) = self.get_path() {
-            self.play(&path)?;
+        if let Some(locator) = self.get_locator() {
+            self.play(&locator)?;
         }
 
         Ok(())
@@ -188,8 +167,8 @@ impl AudioPlayer {
 
         self.update_queue_head(new_head_pos);
 
-        if let Some(path) = self.get_path() {
-            self.play(&path)?;
+        if let Some(locator) = self.get_locator() {
+            self.play(&locator)?;
         }
 
         Ok(())
@@ -225,19 +204,19 @@ impl AudioPlayer {
         });
     }
 
-    pub fn get_path(&self) -> Option<PathBuf> {
+    pub fn get_locator(&self) -> Option<ADL> {
         self.queue
             .get(self.queue_head)
-            .map(|audio| audio.to_owned())
+            .map(|audio| audio.locator.clone())
     }
 
     /// if this is the first song to be added to the queue starts playing immediately
-    pub fn push_to_queue(&mut self, path: PathBuf) -> anyhow::Result<()> {
+    pub fn push_to_queue(&mut self, item: AudioPlayerQueueItem<ADL>) -> anyhow::Result<()> {
         if self.queue.is_empty() {
-            self.play(&path)?;
+            self.play(&item.locator)?;
         }
 
-        self.queue.push(path);
+        self.queue.push(item);
         Ok(())
     }
 
@@ -301,7 +280,7 @@ impl AudioPlayer {
         self.queue_head = value;
     }
 
-    pub fn queue(&self) -> &[PathBuf] {
+    pub fn queue(&self) -> &[AudioPlayerQueueItem<ADL>] {
         &self.queue
     }
 
@@ -313,9 +292,8 @@ impl AudioPlayer {
         self.node_addr = node_addr;
     }
 
-    fn play(&mut self, path: &Path) -> anyhow::Result<()> {
-        let read_disk_stream =
-            ReadDiskStream::<SymphoniaDecoder>::new(path, 0, Default::default())?;
+    fn play(&mut self, locator: &ADL) -> anyhow::Result<()> {
+        let read_disk_stream = locator.load_audio_data()?;
 
         let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(1);
         self.processor_msg_buffer = Some(producer);
@@ -367,7 +345,21 @@ impl AudioPlayer {
 }
 
 impl AudioProcessor {
-    pub fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
+    fn new(
+        msg_buffer: Consumer<AudioProcessorMessage>,
+        read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+    ) -> Self {
+        Self {
+            msg_buffer,
+            read_disk_stream,
+            had_cache_miss_last_cycle: false,
+            last_msg_sent_at: Instant::now(),
+            hard_rate_limit: Duration::from_millis(33),
+            info: ProcessorInfo::default(),
+        }
+    }
+
+    fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
         let mut cache_missed_this_cycle = false;
         let mut stream_state = AudioStreamState::Playing;
 

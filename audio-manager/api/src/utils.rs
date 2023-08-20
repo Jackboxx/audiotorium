@@ -1,14 +1,16 @@
+use std::path::PathBuf;
+
 use cpal::{
     traits::{DeviceTrait, HostTrait},
     SampleRate,
 };
 
-use crate::audio::AudioPlayer;
+use crate::audio_player::AudioPlayer;
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 /// TODO: Handle errors
-pub fn create_player(source_name: &str) -> AudioPlayer {
+pub fn create_player(source_name: &str) -> AudioPlayer<PathBuf> {
     let host = cpal::default_host();
     let device = host
         .output_devices()
@@ -31,5 +33,5 @@ pub fn create_player(source_name: &str) -> AudioPlayer {
         .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
         .into();
 
-    AudioPlayer::new(device, config, Vec::new(), None)
+    AudioPlayer::new(device, config, None)
 }

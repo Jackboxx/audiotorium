@@ -1,17 +1,20 @@
 use std::collections::HashMap;
 
-use actix::{Actor, Addr, Context, Handler, Message, MessageResponse};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse};
 
 use serde::Serialize;
 
 use crate::{
-    brain_session::AudioBrainSession, downloader::AudioDownloader, node::AudioNode,
-    utils::create_player, AUDIO_SOURCES,
+    brain_session::AudioBrainSession,
+    downloader::AudioDownloader,
+    node::{AudioNode, AudioNodeHealth, AudioNodeInfo},
+    utils::create_player,
+    AUDIO_SOURCES,
 };
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
-    nodes: HashMap<String, Addr<AudioNode>>,
+    nodes: HashMap<String, (Addr<AudioNode>, AudioNodeInfo)>,
     sessions: HashMap<usize, Addr<AudioBrainSession>>,
 }
 
@@ -24,7 +27,7 @@ pub struct BrainConnect {
 #[derive(Debug, Clone, Serialize, MessageResponse)]
 pub struct BrainConnectResponse {
     pub id: usize,
-    pub sources: Vec<String>,
+    pub sources: Vec<AudioNodeInfo>,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -64,10 +67,20 @@ impl Actor for AudioBrain {
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
             let player = create_player(source_name);
-            let node = AudioNode::new(player, self.downloader_addr.clone());
+            let node = AudioNode::new(player, ctx.address(), self.downloader_addr.clone());
             let node_addr = node.start();
 
-            self.nodes.insert(human_readable_name.to_owned(), node_addr);
+            self.nodes.insert(
+                source_name.to_owned(),
+                (
+                    node_addr,
+                    AudioNodeInfo {
+                        source_name: source_name.to_owned(),
+                        human_readable_name: human_readable_name.to_owned(),
+                        health: AudioNodeHealth::Good,
+                    },
+                ),
+            );
         }
     }
 }
@@ -83,7 +96,11 @@ impl Handler<BrainConnect> for AudioBrain {
 
         BrainConnectResponse {
             id,
-            sources: self.nodes.keys().map(|key| key.to_owned()).collect(),
+            sources: self
+                .nodes
+                .values()
+                .map(|(_, info)| info.to_owned())
+                .collect(),
         }
     }
 }

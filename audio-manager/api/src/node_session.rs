@@ -8,7 +8,8 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio::LoopBounds,
+    audio_item::AudioMetaData,
+    audio_player::LoopBounds,
     node::{
         AddQueueItemNodeParams, AudioNode, LoopQueueNodeParams, MoveQueueItemNodeParams,
         NodeConnectMessage, NodeDisconnectMessage, NodeInternalMessage, NodeInternalResponse,
@@ -42,14 +43,14 @@ pub enum NodeSessionWsMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum NodeSessionWsResponse {
-    SessionConnectedResponse(Vec<String>),
+    SessionConnectedResponse(Vec<AudioMetaData>),
     ErrorResponse(ErrorResponse),
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddQueueItemNodeSessionParams {
-    pub title: String,
+    pub metadata: AudioMetaData,
     pub url: String,
 }
 
@@ -87,8 +88,8 @@ pub struct LoopNodeSessionParams {
 impl Into<NodeInternalMessage> for NodeSessionWsMessage {
     fn into(self) -> NodeInternalMessage {
         match self {
-            Self::AddQueueItem(AddQueueItemNodeSessionParams { title, url }) => {
-                NodeInternalMessage::AddQueueItem(AddQueueItemNodeParams { title, url })
+            Self::AddQueueItem(AddQueueItemNodeSessionParams { metadata, url }) => {
+                NodeInternalMessage::AddQueueItem(AddQueueItemNodeParams { metadata, url })
             }
             Self::RemoveQueueItem(RemoveQueueItemNodeSessionParams { index }) => {
                 NodeInternalMessage::RemoveQueueItem(RemoveQueueItemNodeParams { index })
@@ -110,6 +111,15 @@ impl Into<NodeInternalMessage> for NodeSessionWsMessage {
             Self::LoopQueue(LoopNodeSessionParams { bounds }) => {
                 NodeInternalMessage::LoopQueue(LoopQueueNodeParams { bounds })
             }
+        }
+    }
+}
+
+impl AudioNodeSession {
+    pub fn new(node_addr: Addr<AudioNode>) -> Self {
+        Self {
+            id: usize::MAX,
+            node_addr,
         }
     }
 }

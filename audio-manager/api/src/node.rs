@@ -1,26 +1,38 @@
 use crate::{
-    audio::{LoopBounds, PlaybackState},
+    audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
+    audio_player::{AudioPlayer, LoopBounds, PlaybackInfo, PlaybackState, ProcessorInfo},
+    brain::AudioBrain,
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
+    node_session::AudioNodeSession,
     ErrorResponse, AUDIO_DIR,
 };
 use std::{
     collections::HashMap,
-    ffi::OsStr,
     path::{Path, PathBuf},
 };
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
 use serde::Serialize;
 
-use crate::{
-    audio::{AudioPlayer, PlaybackInfo, ProcessorInfo},
-    node_session::AudioNodeSession,
-};
-
 pub struct AudioNode {
-    player: AudioPlayer,
+    player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
+    server_addr: Addr<AudioBrain>,
     sessions: HashMap<usize, Addr<AudioNodeSession>>,
+    health: AudioNodeHealth,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioNodeInfo {
+    pub source_name: String,
+    pub human_readable_name: String,
+    pub health: AudioNodeHealth,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum AudioNodeHealth {
+    Good,
+    DeviceNotConnected,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -38,7 +50,7 @@ pub struct NodeDisconnectMessage {
 #[derive(Debug, Clone, MessageResponse)]
 pub struct NodeConnectResponse {
     pub id: usize,
-    pub queue: Vec<String>,
+    pub queue: Vec<AudioMetaData>,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -93,14 +105,14 @@ pub struct SendClientQueueInfoNodeResponse {
 
 #[derive(Debug, Clone)]
 pub struct AddQueueItemNodeParams {
-    pub title: String,
+    pub metadata: AudioMetaData,
     pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddQueueItemNodeResponse {
-    queue: Vec<String>,
+    queue: Vec<AudioMetaData>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,20 +123,20 @@ pub struct RemoveQueueItemNodeParams {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveQueueItemNodeResponse {
-    queue: Vec<String>,
+    queue: Vec<AudioMetaData>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinishedDownloadingAudioNodeResponse {
     error: Option<String>,
-    queue: Option<Vec<String>>,
+    queue: Option<Vec<AudioMetaData>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadQueueNodeResponse {
-    queue: Vec<String>,
+    queue: Vec<AudioMetaData>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,7 +148,7 @@ pub struct MoveQueueItemNodeParams {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveQueueItemNodeResponse {
-    queue: Vec<String>,
+    queue: Vec<AudioMetaData>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,11 +167,17 @@ pub struct LoopQueueNodeParams {
 }
 
 impl AudioNode {
-    pub fn new(player: AudioPlayer, downloader_addr: Addr<AudioDownloader>) -> Self {
+    pub fn new(
+        player: AudioPlayer<PathBuf>,
+        server_addr: Addr<AudioBrain>,
+        downloader_addr: Addr<AudioDownloader>,
+    ) -> Self {
         Self {
             player,
             downloader_addr,
+            server_addr,
             sessions: HashMap::default(),
+            health: AudioNodeHealth::Good,
         }
     }
 
@@ -193,7 +211,7 @@ impl Handler<NodeConnectMessage> for AudioNode {
         self.sessions.insert(id, msg.addr);
         NodeConnectResponse {
             id,
-            queue: queue_as_string_vec(self.player.queue()),
+            queue: extract_queue_metadata(self.player.queue()),
         }
     }
 }
@@ -214,7 +232,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
 
         let msg = match msg.result {
             Ok(resp) => {
-                if let Err(err) = self.player.push_to_queue(resp.path) {
+                if let Err(err) = self.player.push_to_queue(resp.item) {
                     log::error!("failed to auto play first song, ERROR: {err}");
                     return;
                 };
@@ -222,7 +240,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                 NodeInternalUpdateMessage::FinishedDownloadingAudio(
                     FinishedDownloadingAudioNodeResponse {
                         error: None,
-                        queue: Some(queue_as_string_vec(self.player.queue())),
+                        queue: Some(extract_queue_metadata(self.player.queue())),
                     },
                 )
             }
@@ -360,9 +378,9 @@ fn handle_add_queue_item(
     node_addr: Recipient<NotifyDownloadFinished>,
     params: AddQueueItemNodeParams,
 ) -> Result<AddQueueItemNodeResponse, ErrorResponse> {
-    let AddQueueItemNodeParams { title, url } = params.clone();
+    let AddQueueItemNodeParams { metadata, url } = params.clone();
 
-    let path = Path::new(AUDIO_DIR).join(&title);
+    let path = Path::new(AUDIO_DIR).join(&metadata.name);
     let path_with_ext = path.clone().with_extension("mp3");
 
     if !path_with_ext.try_exists().unwrap_or(false) {
@@ -380,7 +398,10 @@ fn handle_add_queue_item(
             url,
         })
     } else {
-        if let Err(err) = node.player.push_to_queue(path_with_ext) {
+        if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
+            metadata,
+            locator: path_with_ext,
+        }) {
             log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
             return Err(ErrorResponse {
                 error: format!("failed to auto play first song, ERROR: {err}"),
@@ -389,7 +410,7 @@ fn handle_add_queue_item(
     }
 
     Ok(AddQueueItemNodeResponse {
-        queue: queue_as_string_vec(node.player.queue()),
+        queue: extract_queue_metadata(node.player.queue()),
     })
 }
 
@@ -407,13 +428,13 @@ fn handle_remove_queue_item(
     }
 
     Ok(RemoveQueueItemNodeResponse {
-        queue: queue_as_string_vec(node.player.queue()),
+        queue: extract_queue_metadata(node.player.queue()),
     })
 }
 
 fn handle_read_queue(node: &AudioNode) -> ReadQueueNodeResponse {
     ReadQueueNodeResponse {
-        queue: queue_as_string_vec(node.player.queue()),
+        queue: extract_queue_metadata(node.player.queue()),
     }
 }
 
@@ -424,19 +445,12 @@ fn handle_move_queue_item(
     let MoveQueueItemNodeParams { old_pos, new_pos } = params;
     node.player.move_queue_item(old_pos, new_pos);
     MoveQueueItemNodeResponse {
-        queue: queue_as_string_vec(node.player.queue()),
+        queue: extract_queue_metadata(node.player.queue()),
     }
 }
 
-fn queue_as_string_vec(queue: &[PathBuf]) -> Vec<String> {
-    queue
-        .iter()
-        .map(|path| {
-            path.file_stem()
-                .unwrap_or(OsStr::new(""))
-                .to_str()
-                .map(|str| str.to_owned())
-                .unwrap_or(String::new())
-        })
-        .collect()
+fn extract_queue_metadata<ADL: AudioDataLocator>(
+    queue: &[AudioPlayerQueueItem<ADL>],
+) -> Vec<AudioMetaData> {
+    queue.iter().map(|item| item.metadata.clone()).collect()
 }

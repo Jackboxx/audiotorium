@@ -13,8 +13,10 @@ use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
 
 use crate::brain_session::AudioBrainSession;
+use crate::node_session::AudioNodeSession;
 
-mod audio;
+mod audio_item;
+mod audio_player;
 mod brain;
 mod brain_session;
 mod downloader;
@@ -35,6 +37,16 @@ pub struct AppData {
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
     error: String,
+}
+
+#[get("/queue/{source_name}")]
+async fn get_con_to_device(
+    data: Data<AppData>,
+    req: HttpRequest,
+    stream: web::Payload,
+) -> impl Responder {
+    let node_addr = todo!("Get node_addr from brain with address");
+    ws::start(AudioNodeSession::new(node_addr), &req, stream)
 }
 
 #[get("/queue")]
