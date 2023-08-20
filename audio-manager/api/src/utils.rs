@@ -1,5 +1,9 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
+use actix::{dev::ToEnvelope, Actor, Addr, Handler, Message};
 use cpal::{
     traits::{DeviceTrait, HostTrait},
     SampleRate,
@@ -8,6 +12,38 @@ use cpal::{
 use crate::audio_player::AudioPlayer;
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
+
+#[derive(Debug, Clone)]
+pub struct MessageRateLimiter {
+    last_msg_sent_at: Instant,
+    hard_rate_limit: Duration,
+}
+
+impl MessageRateLimiter {
+    pub fn send_msg<M, H>(&mut self, msg: M, addr: Option<&Addr<H>>)
+    where
+        M: Message + Send,
+        M::Result: Send,
+        H: Handler<M>,
+        <H as Actor>::Context: ToEnvelope<H, M>,
+    {
+        let Some(addr) = addr else { return };
+
+        if Instant::now().duration_since(self.last_msg_sent_at) > self.hard_rate_limit {
+            self.last_msg_sent_at = Instant::now();
+            addr.do_send(msg);
+        }
+    }
+}
+
+impl Default for MessageRateLimiter {
+    fn default() -> Self {
+        Self {
+            last_msg_sent_at: Instant::now(),
+            hard_rate_limit: Duration::from_millis(33),
+        }
+    }
+}
 
 /// TODO: Handle errors
 pub fn create_player(source_name: &str) -> AudioPlayer<PathBuf> {

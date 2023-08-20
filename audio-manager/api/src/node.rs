@@ -33,7 +33,19 @@ pub struct AudioNodeInfo {
 #[derive(Debug, Clone, Serialize)]
 pub enum AudioNodeHealth {
     Good,
+    Mild(AudioNodeHealthMild),
+    Poor(AudioNodeHealthPoor),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum AudioNodeHealthMild {
+    Buffering,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum AudioNodeHealthPoor {
     DeviceNotAvailable,
+    AudioStreamReadFailed,
     AudioBackendError(String),
 }
 

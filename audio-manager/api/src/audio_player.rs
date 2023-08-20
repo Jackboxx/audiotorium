@@ -1,22 +1,20 @@
-use std::time::{Duration, Instant};
-
 use actix::Addr;
 use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     Device, Stream, StreamConfig, StreamError,
 };
-use creek::{ReadDiskStream, SymphoniaDecoder};
-use log::error;
+use creek::{read::ReadError, ReadDiskStream, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     audio_item::{AudioDataLocator, AudioPlayerQueueItem},
     node::{
-        AudioNode, AudioNodeHealth, NodeInternalMessage, SendClientQueueInfoNodeParams,
-        UpdateNodeHealthParams,
+        AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor, NodeInternalMessage,
+        SendClientQueueInfoNodeParams, UpdateNodeHealthParams,
     },
+    utils::MessageRateLimiter,
 };
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
@@ -35,8 +33,6 @@ struct AudioProcessor {
     msg_buffer: Consumer<AudioProcessorMessage>,
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     had_cache_miss_last_cycle: bool,
-    last_msg_sent_at: Instant,
-    hard_rate_limit: Duration,
     info: ProcessorInfo,
 }
 
@@ -303,8 +299,12 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
         let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
 
+        let mut processor_rate_limiter = MessageRateLimiter::default();
+        let mut processor_rate_limiter_for_err = MessageRateLimiter::default();
+
         let addr = self.node_addr.clone();
-        let addr_for_err = self.node_addr.clone(); // I don't care
+        let addr_for_err = self.node_addr.clone();
+
         let new_stream = self.device.build_output_stream(
             &self.config,
             move |data: &mut [f32], _| match processor.try_process(data) {
@@ -312,54 +312,58 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        if let Some(Err(err)) = addr
-                            .as_ref()
-                            .and_then(|addr| Some(addr.try_send(NodeInternalMessage::PlayNext)))
-                        {
-                            // TODO: health update
-                            error!("failed to play next audio in queue, ERROR: {err}");
-                        }
-                    }
-                    AudioStreamState::Buffering => {
-                        // TODO: health update
-                    }
-                    AudioStreamState::Playing => {
-                        // prevent message spam from filling up mailbox of the server
-                        if Instant::now().duration_since(processor.last_msg_sent_at)
-                            > processor.hard_rate_limit
-                        {
-                            processor.last_msg_sent_at = Instant::now();
-                            if let Some(addr) = &addr {
-                                addr.do_send(NodeInternalMessage::SendClientQueueInfo(
-                                    SendClientQueueInfoNodeParams {
-                                        processor_info: processor.info.clone(),
-                                    },
-                                ));
+                        if let Some(addr) = addr.as_ref() {
+                            if let Err(err) = addr.try_send(NodeInternalMessage::PlayNext) {
+                                log::error!("failed to play next audio in queue, ERROR: {err}");
                             }
                         }
                     }
+                    AudioStreamState::Buffering => {
+                        let msg = NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                            health: AudioNodeHealth::Mild(AudioNodeHealthMild::Buffering),
+                        });
+
+                        processor_rate_limiter.send_msg(msg, addr.as_ref());
+                    }
+                    AudioStreamState::Playing => {
+                        let msg = NodeInternalMessage::SendClientQueueInfo(
+                            SendClientQueueInfoNodeParams {
+                                processor_info: processor.info.clone(),
+                            },
+                        );
+
+                        processor_rate_limiter.send_msg(msg, addr.as_ref());
+                    }
                 },
                 Err(err) => {
-                    // TODO: health update
-                    error!("failed to process audio, ERROR: {err}");
+                    log::error!("failed to process audio, ERROR: {err}");
+
+                    let msg = NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                        health: AudioNodeHealth::Poor(AudioNodeHealthPoor::AudioStreamReadFailed),
+                    });
+
+                    processor_rate_limiter.send_msg(msg, addr.as_ref());
                 }
             },
             move |err| {
-                error!("failed to process audio, ERROR: {err}");
-                if let Some(addr) = &addr_for_err {
-                    match err {
-                        StreamError::DeviceNotAvailable => addr.do_send(
-                            NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                                health: AudioNodeHealth::DeviceNotAvailable,
-                            }),
-                        ),
-                        StreamError::BackendSpecific { err } => addr.do_send(
-                            NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                                health: AudioNodeHealth::AudioBackendError(err.description),
-                            }),
-                        ),
+                log::error!("failed to process audio, ERROR: {err}");
+                let msg = match err {
+                    StreamError::DeviceNotAvailable => {
+                        NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                            health: AudioNodeHealth::Poor(AudioNodeHealthPoor::DeviceNotAvailable),
+                        })
                     }
-                }
+
+                    StreamError::BackendSpecific { err } => {
+                        NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
+                            health: AudioNodeHealth::Poor(AudioNodeHealthPoor::AudioBackendError(
+                                err.description,
+                            )),
+                        })
+                    }
+                };
+
+                processor_rate_limiter_for_err.send_msg(msg, addr_for_err.as_ref());
             },
             None,
         )?;
@@ -379,13 +383,14 @@ impl AudioProcessor {
             msg_buffer,
             read_disk_stream,
             had_cache_miss_last_cycle: false,
-            last_msg_sent_at: Instant::now(),
-            hard_rate_limit: Duration::from_millis(33),
             info: ProcessorInfo::default(),
         }
     }
 
-    fn try_process(&mut self, mut data: &mut [f32]) -> anyhow::Result<AudioStreamState> {
+    fn try_process(
+        &mut self,
+        mut data: &mut [f32],
+    ) -> Result<AudioStreamState, ReadError<symphonia_core::errors::Error>> {
         let mut cache_missed_this_cycle = false;
         let mut stream_state = AudioStreamState::Playing;
 
