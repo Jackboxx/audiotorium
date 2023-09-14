@@ -19,6 +19,12 @@ pub struct AudioBrain {
 }
 
 #[derive(Debug, Clone, Message)]
+#[rtype(result = "Option<Addr<AudioNode>>")]
+pub struct GetAudioNodeMessage {
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
 pub enum AudioBrainInternalUpdateMessages {
     NodeHealthUpdate((String, AudioNodeHealth)),
@@ -150,5 +156,13 @@ impl Handler<AudioBrainInternalUpdateMessages> for AudioBrain {
                 }
             }
         }
+    }
+}
+
+impl Handler<GetAudioNodeMessage> for AudioBrain {
+    type Result = Option<Addr<AudioNode>>;
+
+    fn handle(&mut self, msg: GetAudioNodeMessage, ctx: &mut Self::Context) -> Self::Result {
+        self.nodes.get(&msg.source_name).map(|v| v.0.clone())
     }
 }

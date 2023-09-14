@@ -12,6 +12,7 @@ use actix_web_actors::ws;
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
 
+use crate::brain::GetAudioNodeMessage;
 use crate::brain_session::AudioBrainSession;
 use crate::node_session::AudioNodeSession;
 
@@ -42,10 +43,19 @@ pub struct ErrorResponse {
 #[get("/queue/{source_name}")]
 async fn get_con_to_device(
     data: Data<AppData>,
+    source_name: web::Path<String>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> impl Responder {
-    let node_addr = todo!("Get node_addr from brain with address");
+    let node_addr = data
+        .brain_addr
+        .send(GetAudioNodeMessage {
+            source_name: source_name.into_inner(),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
     ws::start(AudioNodeSession::new(node_addr), &req, stream)
 }
 
