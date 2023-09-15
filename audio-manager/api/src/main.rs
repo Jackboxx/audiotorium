@@ -109,6 +109,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .wrap(cors)
             .service(get_con_to_queue)
+            .service(get_con_to_device)
     })
     .bind((addr, 50051))?
     .run()
