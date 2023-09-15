@@ -4,6 +4,7 @@ use std::{
 };
 
 use actix::{dev::ToEnvelope, Actor, Addr, Handler, Message};
+use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, HostTrait},
     SampleRate,
@@ -46,21 +47,18 @@ impl Default for MessageRateLimiter {
 }
 
 /// TODO: Handle errors
-pub fn create_player(source_name: &str) -> AudioPlayer<PathBuf> {
+pub fn create_player(source_name: &str) -> anyhow::Result<AudioPlayer<PathBuf>> {
     let host = cpal::default_host();
     let device = host
-        .output_devices()
-        .expect("no output device available")
-        .find(|dev| dev.name().expect("device has no name") == source_name)
-        .expect("no device found");
+        .output_devices()?
+        .find(|dev| dev.name().map(|v| v == source_name).unwrap_or(false))
+        .ok_or(anyhow!("no device with source name {source_name} found"))?;
 
-    let mut supported_configs_range = device
-        .supported_output_configs()
-        .expect("error while querying configs");
+    let mut supported_configs_range = device.supported_output_configs()?;
 
     let supported_config = supported_configs_range
         .next()
-        .expect("no supported config?!");
+        .ok_or(anyhow!("no config found"))?;
 
     let channel_count = 2; // I choose to make this assumption not because it is good
                            // but because it is easy
@@ -69,5 +67,5 @@ pub fn create_player(source_name: &str) -> AudioPlayer<PathBuf> {
         .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
         .into();
 
-    AudioPlayer::new(device, config, None)
+    Ok(AudioPlayer::new(device, config, None))
 }

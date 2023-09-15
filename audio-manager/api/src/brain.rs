@@ -78,26 +78,27 @@ impl Actor for AudioBrain {
         log::info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
-            let player = create_player(source_name);
-            let node = AudioNode::new(
-                source_name.to_owned(),
-                player,
-                ctx.address(),
-                self.downloader_addr.clone(),
-            );
-            let node_addr = node.start();
+            if let Ok(player) = create_player(source_name) {
+                let node = AudioNode::new(
+                    source_name.to_owned(),
+                    player,
+                    ctx.address(),
+                    self.downloader_addr.clone(),
+                );
+                let node_addr = node.start();
 
-            self.nodes.insert(
-                source_name.to_owned(),
-                (
-                    node_addr,
-                    AudioNodeInfo {
-                        source_name: source_name.to_owned(),
-                        human_readable_name: human_readable_name.to_owned(),
-                        health: AudioNodeHealth::Good,
-                    },
-                ),
-            );
+                self.nodes.insert(
+                    source_name.to_owned(),
+                    (
+                        node_addr,
+                        AudioNodeInfo {
+                            source_name: source_name.to_owned(),
+                            human_readable_name: human_readable_name.to_owned(),
+                            health: AudioNodeHealth::Good,
+                        },
+                    ),
+                );
+            }
         }
     }
 }
