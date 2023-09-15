@@ -1,6 +1,4 @@
 use brain::AudioBrain;
-use dotenv;
-
 use log::LevelFilter;
 
 use actix::{Actor, Addr};
@@ -91,7 +89,7 @@ async fn main() -> std::io::Result<()> {
         simple_logging::log_to_stderr(LevelFilter::Info);
     };
 
-    let downloader = AudioDownloader::default();
+    let downloader = AudioDownloader;
     let downloader_addr = downloader.start();
 
     let queue_server = AudioBrain::new(downloader_addr);

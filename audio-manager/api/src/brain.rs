@@ -162,7 +162,13 @@ impl Handler<AudioBrainInternalUpdateMessages> for AudioBrain {
 impl Handler<GetAudioNodeMessage> for AudioBrain {
     type Result = Option<Addr<AudioNode>>;
 
-    fn handle(&mut self, msg: GetAudioNodeMessage, ctx: &mut Self::Context) -> Self::Result {
-        self.nodes.get(&msg.source_name).map(|v| v.0.clone())
+    fn handle(&mut self, msg: GetAudioNodeMessage, _ctx: &mut Self::Context) -> Self::Result {
+        self.nodes
+            .get(&msg.source_name)
+            .map(|v| match v.1.health {
+                AudioNodeHealth::Poor(_) => None,
+                _ => Some(v.0.clone()),
+            })
+            .flatten()
     }
 }
