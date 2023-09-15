@@ -43,7 +43,7 @@ impl Handler<DownloadAudio> for AudioDownloader {
 
         let Some(str_path) = path.to_str() else { 
             log::error!("path {path:?} can't be converted to a string");
-            addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: format!("failed to construct valid path") }) });
+            addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: "failed to construct valid path".to_owned() }) });
             return;
         };
 

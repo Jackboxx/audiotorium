@@ -85,30 +85,31 @@ pub struct LoopNodeSessionParams {
     pub bounds: Option<LoopBounds>,
 }
 
-impl Into<NodeInternalMessage> for NodeSessionWsMessage {
-    fn into(self) -> NodeInternalMessage {
-        match self {
-            Self::AddQueueItem(AddQueueItemNodeSessionParams { metadata, url }) => {
+impl From<NodeSessionWsMessage> for NodeInternalMessage {
+    fn from(val: NodeSessionWsMessage) -> Self {
+        match val {
+            NodeSessionWsMessage::AddQueueItem(AddQueueItemNodeSessionParams { metadata, url }) => {
                 NodeInternalMessage::AddQueueItem(AddQueueItemNodeParams { metadata, url })
             }
-            Self::RemoveQueueItem(RemoveQueueItemNodeSessionParams { index }) => {
+            NodeSessionWsMessage::RemoveQueueItem(RemoveQueueItemNodeSessionParams { index }) => {
                 NodeInternalMessage::RemoveQueueItem(RemoveQueueItemNodeParams { index })
             }
-            Self::ReadQueueItems => NodeInternalMessage::ReadQueueItems,
-            Self::MoveQueueItem(MoveQueueItemNodeSessionParams { old_pos, new_pos }) => {
-                NodeInternalMessage::MoveQueueItem(MoveQueueItemNodeParams { old_pos, new_pos })
-            }
-            Self::SetAudioProgress(SetAudioProgressNodeSessionParams { progress }) => {
-                NodeInternalMessage::SetAudioProgress(SetAudioProgressNodeParams { progress })
-            }
-            Self::PauseQueue => NodeInternalMessage::PauseQueue,
-            Self::UnPauseQueue => NodeInternalMessage::UnPauseQueue,
-            Self::PlayNext => NodeInternalMessage::PlayNext,
-            Self::PlayPrevious => NodeInternalMessage::PlayPrevious,
-            Self::PlaySelected(PlaySelectedNodeSessionParams { index }) => {
+            NodeSessionWsMessage::ReadQueueItems => NodeInternalMessage::ReadQueueItems,
+            NodeSessionWsMessage::MoveQueueItem(MoveQueueItemNodeSessionParams {
+                old_pos,
+                new_pos,
+            }) => NodeInternalMessage::MoveQueueItem(MoveQueueItemNodeParams { old_pos, new_pos }),
+            NodeSessionWsMessage::SetAudioProgress(SetAudioProgressNodeSessionParams {
+                progress,
+            }) => NodeInternalMessage::SetAudioProgress(SetAudioProgressNodeParams { progress }),
+            NodeSessionWsMessage::PauseQueue => NodeInternalMessage::PauseQueue,
+            NodeSessionWsMessage::UnPauseQueue => NodeInternalMessage::UnPauseQueue,
+            NodeSessionWsMessage::PlayNext => NodeInternalMessage::PlayNext,
+            NodeSessionWsMessage::PlayPrevious => NodeInternalMessage::PlayPrevious,
+            NodeSessionWsMessage::PlaySelected(PlaySelectedNodeSessionParams { index }) => {
                 NodeInternalMessage::PlaySelected(PlaySelectedNodeParams { index })
             }
-            Self::LoopQueue(LoopNodeSessionParams { bounds }) => {
+            NodeSessionWsMessage::LoopQueue(LoopNodeSessionParams { bounds }) => {
                 NodeInternalMessage::LoopQueue(LoopQueueNodeParams { bounds })
             }
         }

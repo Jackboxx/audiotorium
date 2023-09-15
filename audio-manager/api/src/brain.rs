@@ -63,7 +63,7 @@ impl AudioBrain {
         M::Result: Send,
         AudioBrainSession: Handler<M>,
     {
-        for (_, addr) in &self.sessions {
+        for addr in self.sessions.values() {
             addr.do_send(msg.clone());
         }
     }
@@ -165,10 +165,9 @@ impl Handler<GetAudioNodeMessage> for AudioBrain {
     fn handle(&mut self, msg: GetAudioNodeMessage, _ctx: &mut Self::Context) -> Self::Result {
         self.nodes
             .get(&msg.source_name)
-            .map(|v| match v.1.health {
+            .and_then(|v| match v.1.health {
                 AudioNodeHealth::Poor(_) => None,
                 _ => Some(v.0.clone()),
             })
-            .flatten()
     }
 }

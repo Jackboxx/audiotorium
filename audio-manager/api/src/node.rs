@@ -209,7 +209,7 @@ impl AudioNode {
         M::Result: Send,
         AudioNodeSession: Handler<M>,
     {
-        for (_, addr) in &self.sessions {
+        for addr in self.sessions.values() {
             addr.do_send(msg.clone());
         }
     }
@@ -309,7 +309,7 @@ impl Handler<NodeInternalMessage> for AudioNode {
             NodeInternalMessage::ReadQueueItems => {
                 log::info!("'ReadQueueItems' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = NodeInternalResponse::ReadQueueItemsResponse(handle_read_queue(&self));
+                let msg = NodeInternalResponse::ReadQueueItemsResponse(handle_read_queue(self));
                 self.multicast(msg);
 
                 Ok(())
@@ -430,16 +430,14 @@ fn handle_add_queue_item(
             path,
             url,
         })
-    } else {
-        if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-            metadata,
-            locator: path_with_ext,
-        }) {
-            log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
-            return Err(ErrorResponse {
-                error: format!("failed to auto play first song, ERROR: {err}"),
-            });
-        };
+    } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
+        metadata,
+        locator: path_with_ext,
+    }) {
+        log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
+        return Err(ErrorResponse {
+            error: format!("failed to auto play first song, ERROR: {err}"),
+        });
     }
 
     Ok(AddQueueItemNodeResponse {
