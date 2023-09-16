@@ -10,7 +10,11 @@ use cpal::{
     SampleRate,
 };
 
-use crate::audio_player::AudioPlayer;
+use crate::{
+    audio_player::AudioPlayer,
+    brain::{AudioBrain, GetAudioNodeMessage},
+    node::AudioNode,
+};
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
@@ -46,7 +50,13 @@ impl Default for MessageRateLimiter {
     }
 }
 
-/// TODO: Handle errors
+pub async fn get_node_by_source_name(
+    source_name: String,
+    addr: &Addr<AudioBrain>,
+) -> Option<Addr<AudioNode>> {
+    addr.send(GetAudioNodeMessage { source_name }).await.ok()?
+}
+
 pub fn create_player(source_name: &str) -> anyhow::Result<AudioPlayer<PathBuf>> {
     let host = cpal::default_host();
     let device = host

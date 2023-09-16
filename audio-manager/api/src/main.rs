@@ -10,9 +10,10 @@ use actix_web_actors::ws;
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
 
-use crate::brain::GetAudioNodeMessage;
 use crate::brain_session::AudioBrainSession;
-use crate::node_session::AudioNodeSession;
+
+mod commands;
+mod streams;
 
 mod audio_item;
 mod audio_player;
@@ -36,25 +37,6 @@ pub struct AppData {
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
     error: String,
-}
-
-#[get("/queue/{source_name}")]
-async fn get_con_to_device(
-    data: Data<AppData>,
-    source_name: web::Path<String>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> impl Responder {
-    let node_addr = data
-        .brain_addr
-        .send(GetAudioNodeMessage {
-            source_name: source_name.into_inner(),
-        })
-        .await
-        .unwrap()
-        .unwrap();
-
-    ws::start(AudioNodeSession::new(node_addr), &req, stream)
 }
 
 #[get("/queue")]
@@ -109,7 +91,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .wrap(cors)
             .service(get_con_to_queue)
-            .service(get_con_to_device)
     })
     .bind((addr, 50051))?
     .run()

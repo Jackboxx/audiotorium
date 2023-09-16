@@ -1,9 +1,13 @@
 use crate::{
     audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
-    audio_player::{AudioPlayer, LoopBounds, PlaybackInfo, PlaybackState, ProcessorInfo},
+    audio_player::{AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue},
     brain::{AudioBrain, AudioBrainInternalUpdateMessages},
+    commands::node_commands::{
+        AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
+    },
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
     node_session::AudioNodeSession,
+    streams::node_streams::{AudioNodeInfoStreamMessage, AudioStateInfo, DownloadInfo},
     ErrorResponse, AUDIO_DIR,
 };
 use std::{
@@ -28,6 +32,13 @@ pub struct AudioNodeInfo {
     pub source_name: String,
     pub human_readable_name: String,
     pub health: AudioNodeHealth,
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub enum AudioProcessorToNodeMessage {
+    AudioStateInfo(ProcessorInfo),
+    Health(AudioNodeHealth),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -67,40 +78,11 @@ pub struct NodeConnectResponse {
     pub queue: Vec<AudioMetaData>,
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[allow(clippy::enum_variant_names, dead_code)]
+#[derive(Debug, Clone, Serialize, Message)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[rtype(result = "()")]
 pub enum NodeInternalMessage {
-    AddQueueItem(AddQueueItemNodeParams),
-    RemoveQueueItem(RemoveQueueItemNodeParams),
-    ReadQueueItems,
-    MoveQueueItem(MoveQueueItemNodeParams),
-    SetAudioProgress(SetAudioProgressNodeParams),
-    PauseQueue,
-    UnPauseQueue,
-    PlayNext,
-    PlayPrevious,
-    PlaySelected(PlaySelectedNodeParams),
-    LoopQueue(LoopQueueNodeParams),
-    SendClientQueueInfo(SendClientQueueInfoNodeParams),
-    UpdateHealth(UpdateNodeHealthParams),
-}
-
-#[allow(clippy::enum_variant_names, dead_code)]
-#[derive(Debug, Clone, Serialize, Message)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[rtype(result = "()")]
-pub enum NodeInternalResponse {
-    AddQueueItemResponse(AddQueueItemNodeResponse),
-    RemoveQueueItemResponse(RemoveQueueItemNodeResponse),
-    ReadQueueItemsResponse(ReadQueueNodeResponse),
-    MoveQueueItemResponse(MoveQueueItemNodeResponse),
-}
-
-#[allow(clippy::enum_variant_names, dead_code)]
-#[derive(Debug, Clone, Serialize, Message)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[rtype(result = "()")]
-pub enum NodeInternalUpdateMessage {
     SendClientQueueQueueInfo(SendClientQueueInfoNodeResponse),
     StartedDownloadingAudio,
     FinishedDownloadingAudio(FinishedDownloadingAudioNodeResponse),
@@ -123,67 +105,11 @@ pub struct SendClientQueueInfoNodeResponse {
     pub processor_info: ProcessorInfo,
 }
 
-#[derive(Debug, Clone)]
-pub struct AddQueueItemNodeParams {
-    pub metadata: AudioMetaData,
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AddQueueItemNodeResponse {
-    queue: Vec<AudioMetaData>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RemoveQueueItemNodeParams {
-    pub index: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoveQueueItemNodeResponse {
-    queue: Vec<AudioMetaData>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinishedDownloadingAudioNodeResponse {
     error: Option<String>,
     queue: Option<Vec<AudioMetaData>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadQueueNodeResponse {
-    queue: Vec<AudioMetaData>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MoveQueueItemNodeParams {
-    pub old_pos: usize,
-    pub new_pos: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MoveQueueItemNodeResponse {
-    queue: Vec<AudioMetaData>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SetAudioProgressNodeParams {
-    pub progress: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct PlaySelectedNodeParams {
-    pub index: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct LoopQueueNodeParams {
-    pub bounds: Option<LoopBounds>,
 }
 
 impl AudioNode {
@@ -252,41 +178,44 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
         log::info!("'NotifyDownloadFinished' handler received a message, MESSAGE: {msg:?}");
 
-        let msg = match msg.result {
+        match msg.result {
             Ok(resp) => {
                 if let Err(err) = self.player.push_to_queue(resp.item) {
                     log::error!("failed to auto play first song, ERROR: {err}");
                     return;
                 };
 
-                NodeInternalUpdateMessage::FinishedDownloadingAudio(
-                    FinishedDownloadingAudioNodeResponse {
-                        error: None,
-                        queue: Some(extract_queue_metadata(self.player.queue())),
-                    },
-                )
-            }
-            Err(err_resp) => NodeInternalUpdateMessage::FinishedDownloadingAudio(
-                FinishedDownloadingAudioNodeResponse {
-                    error: Some(err_resp.error),
-                    queue: None,
-                },
-            ),
-        };
+                let download_fin_msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
+                    in_progress: false,
+                    error: None,
+                });
+                self.multicast(download_fin_msg);
 
-        self.multicast(msg);
+                let updated_queue_msg =
+                    AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(self.player.queue()));
+                self.multicast(updated_queue_msg);
+            }
+            Err(err_resp) => {
+                let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
+                    in_progress: false,
+                    error: Some(err_resp.error),
+                });
+
+                self.multicast(msg);
+            }
+        }
     }
 }
 
-impl Handler<NodeInternalMessage> for AudioNode {
+impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
-    fn handle(&mut self, msg: NodeInternalMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AudioNodeCommand, ctx: &mut Self::Context) -> Self::Result {
         match &msg {
-            NodeInternalMessage::AddQueueItem(params) => {
+            AudioNodeCommand::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = NodeInternalResponse::AddQueueItemResponse(handle_add_queue_item(
+                let msg = AudioNodeInfoStreamMessage::Queue(handle_add_queue_item(
                     self,
                     ctx.address().recipient(),
                     params.clone(),
@@ -295,10 +224,10 @@ impl Handler<NodeInternalMessage> for AudioNode {
 
                 Ok(())
             }
-            NodeInternalMessage::RemoveQueueItem(params) => {
+            AudioNodeCommand::RemoveQueueItem(params) => {
                 log::info!("'RemoveQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = NodeInternalResponse::RemoveQueueItemResponse(handle_remove_queue_item(
+                let msg = AudioNodeInfoStreamMessage::Queue(handle_remove_queue_item(
                     self,
                     params.clone(),
                 )?);
@@ -306,46 +235,36 @@ impl Handler<NodeInternalMessage> for AudioNode {
 
                 Ok(())
             }
-            NodeInternalMessage::ReadQueueItems => {
-                log::info!("'ReadQueueItems' handler received a message, MESSAGE: {msg:?}");
-
-                let msg = NodeInternalResponse::ReadQueueItemsResponse(handle_read_queue(self));
-                self.multicast(msg);
-
-                Ok(())
-            }
-            NodeInternalMessage::MoveQueueItem(params) => {
+            AudioNodeCommand::MoveQueueItem(params) => {
                 log::info!("'MoveQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = NodeInternalResponse::MoveQueueItemResponse(handle_move_queue_item(
-                    self,
-                    params.clone(),
-                ));
+                let msg =
+                    AudioNodeInfoStreamMessage::Queue(handle_move_queue_item(self, params.clone()));
 
                 self.multicast(msg);
 
                 Ok(())
             }
-            NodeInternalMessage::SetAudioProgress(params) => {
+            AudioNodeCommand::SetAudioProgress(params) => {
                 log::info!("'SetAudioProgress' handler received a message, MESSAGE: {msg:?}");
 
                 self.player.set_stream_progress(params.progress);
                 Ok(())
             }
-            NodeInternalMessage::PauseQueue => {
+            AudioNodeCommand::PauseQueue => {
                 log::info!("'PauseQueue' handler received a message, MESSAGE: {msg:?}");
 
                 self.player.set_stream_playback_state(PlaybackState::Paused);
                 Ok(())
             }
-            NodeInternalMessage::UnPauseQueue => {
+            AudioNodeCommand::UnPauseQueue => {
                 log::info!("'UnPauseQueue' handler received a message, MESSAGE: {msg:?}");
 
                 self.player
                     .set_stream_playback_state(PlaybackState::Playing);
                 Ok(())
             }
-            NodeInternalMessage::PlayNext => {
+            AudioNodeCommand::PlayNext => {
                 log::info!("'PlayNext' handler received a message, MESSAGE: {msg:?}");
 
                 self.player.play_next().map_err(|err| ErrorResponse {
@@ -353,7 +272,7 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 })?;
                 Ok(())
             }
-            NodeInternalMessage::PlayPrevious => {
+            AudioNodeCommand::PlayPrevious => {
                 log::info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
 
                 self.player.play_prev().map_err(|err| ErrorResponse {
@@ -361,7 +280,7 @@ impl Handler<NodeInternalMessage> for AudioNode {
                 })?;
                 Ok(())
             }
-            NodeInternalMessage::PlaySelected(params) => {
+            AudioNodeCommand::PlaySelected(params) => {
                 log::info!("'PlaySelected' handler received a message, MESSAGE: {msg:?}");
 
                 self.player
@@ -371,36 +290,43 @@ impl Handler<NodeInternalMessage> for AudioNode {
                     })?;
                 Ok(())
             }
-            NodeInternalMessage::LoopQueue(params) => {
+            AudioNodeCommand::LoopQueue(params) => {
                 log::info!("'LoopQueue' handler received a message, MESSAGE: {msg:?}");
 
                 self.player.set_loop(params.bounds.clone());
                 Ok(())
             }
-            NodeInternalMessage::SendClientQueueInfo(params) => {
-                log::info!("'SendClientQueueInfo' handler received a message, MESSAGE: {msg:?}");
+        }
+    }
+}
 
-                let msg = NodeInternalUpdateMessage::SendClientQueueQueueInfo(
-                    SendClientQueueInfoNodeResponse {
-                        playback_info: self.player.playback_info().clone(),
-                        processor_info: params.processor_info.clone(),
-                    },
-                );
+impl Handler<AudioProcessorToNodeMessage> for AudioNode {
+    type Result = ();
 
-                self.multicast(msg);
-
-                Ok(())
-            }
-            NodeInternalMessage::UpdateHealth(params) => {
-                self.health = params.health.clone();
+    fn handle(
+        &mut self,
+        msg: AudioProcessorToNodeMessage,
+        _ctx: &mut Self::Context,
+    ) -> Self::Result {
+        match msg {
+            AudioProcessorToNodeMessage::Health(health) => {
+                self.health = health.clone();
 
                 self.server_addr
                     .do_send(AudioBrainInternalUpdateMessages::NodeHealthUpdate((
                         self.source_name.to_owned(),
-                        params.health.clone(),
+                        health.clone(),
                     )));
 
-                Ok(())
+                self.multicast(AudioNodeInfoStreamMessage::Health(health));
+            }
+            AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
+                let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioStateInfo {
+                    playback_info: self.player.playback_info().clone(),
+                    processor_info,
+                });
+
+                self.multicast(msg);
             }
         }
     }
@@ -409,15 +335,18 @@ impl Handler<NodeInternalMessage> for AudioNode {
 fn handle_add_queue_item(
     node: &mut AudioNode,
     node_addr: Recipient<NotifyDownloadFinished>,
-    params: AddQueueItemNodeParams,
-) -> Result<AddQueueItemNodeResponse, ErrorResponse> {
-    let AddQueueItemNodeParams { metadata, url } = params.clone();
+    params: AddQueueItemParams,
+) -> Result<SerializableQueue, ErrorResponse> {
+    let AddQueueItemParams { metadata, url } = params.clone();
 
     let path = Path::new(AUDIO_DIR).join(&metadata.name);
     let path_with_ext = path.clone().with_extension("mp3");
 
     if !path_with_ext.try_exists().unwrap_or(false) {
-        let msg = NodeInternalUpdateMessage::StartedDownloadingAudio;
+        let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
+            in_progress: true,
+            error: None,
+        });
         node.multicast(msg);
 
         // TODO:
@@ -440,16 +369,14 @@ fn handle_add_queue_item(
         });
     }
 
-    Ok(AddQueueItemNodeResponse {
-        queue: extract_queue_metadata(node.player.queue()),
-    })
+    Ok(extract_queue_metadata(node.player.queue()))
 }
 
 fn handle_remove_queue_item(
     node: &mut AudioNode,
-    params: RemoveQueueItemNodeParams,
-) -> Result<RemoveQueueItemNodeResponse, ErrorResponse> {
-    let RemoveQueueItemNodeParams { index } = params.clone();
+    params: RemoveQueueItemParams,
+) -> Result<SerializableQueue, ErrorResponse> {
+    let RemoveQueueItemParams { index } = params.clone();
 
     if let Err(err) = node.player.remove_from_queue(index) {
         log::error!("failed to play correct audio after removing element from queue, MESSAGE: {params:?}, ERROR: {err}");
@@ -458,30 +385,18 @@ fn handle_remove_queue_item(
         });
     }
 
-    Ok(RemoveQueueItemNodeResponse {
-        queue: extract_queue_metadata(node.player.queue()),
-    })
+    Ok(extract_queue_metadata(node.player.queue()))
 }
 
-fn handle_read_queue(node: &AudioNode) -> ReadQueueNodeResponse {
-    ReadQueueNodeResponse {
-        queue: extract_queue_metadata(node.player.queue()),
-    }
-}
-
-fn handle_move_queue_item(
-    node: &mut AudioNode,
-    params: MoveQueueItemNodeParams,
-) -> MoveQueueItemNodeResponse {
-    let MoveQueueItemNodeParams { old_pos, new_pos } = params;
+fn handle_move_queue_item(node: &mut AudioNode, params: MoveQueueItemParams) -> SerializableQueue {
+    let MoveQueueItemParams { old_pos, new_pos } = params;
     node.player.move_queue_item(old_pos, new_pos);
-    MoveQueueItemNodeResponse {
-        queue: extract_queue_metadata(node.player.queue()),
-    }
+
+    extract_queue_metadata(node.player.queue())
 }
 
 fn extract_queue_metadata<ADL: AudioDataLocator>(
     queue: &[AudioPlayerQueueItem<ADL>],
-) -> Vec<AudioMetaData> {
+) -> SerializableQueue {
     queue.iter().map(|item| item.metadata.clone()).collect()
 }
