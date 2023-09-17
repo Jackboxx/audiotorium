@@ -61,7 +61,7 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
 async fn get_node_stream(
     data: Data<AppData>,
     source_name: web::Path<String>,
-    wanted_info: web::Json<Vec<AudioNodeInfoStreamType>>,
+    wanted_info: web::Query<Vec<AudioNodeInfoStreamType>>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> HttpResponse {
