@@ -12,11 +12,12 @@ use crate::{
     audio_player::{PlaybackInfo, ProcessorInfo, SerializableQueue},
     node::AudioNodeHealth,
     node_session::AudioNodeSession,
+    streams::StreamWantedInfoParams,
     utils::get_node_by_source_name,
     AppData,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AudioNodeInfoStreamType {
     Queue,
@@ -61,7 +62,7 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
 async fn get_node_stream(
     data: Data<AppData>,
     source_name: web::Path<String>,
-    wanted_info: web::Query<Vec<AudioNodeInfoStreamType>>,
+    query: web::Query<StreamWantedInfoParams>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> HttpResponse {
@@ -74,7 +75,7 @@ async fn get_node_stream(
     };
 
     match ws::start(
-        AudioNodeSession::new(node_addr, wanted_info.into_inner()),
+        AudioNodeSession::new(node_addr, query.into_inner().wanted_info),
         &req,
         stream,
     ) {
