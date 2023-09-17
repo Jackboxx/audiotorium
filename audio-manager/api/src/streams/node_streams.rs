@@ -58,7 +58,7 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
 }
 
 #[get("/streams/node/{source_name}")]
-async fn get_con_to_device(
+async fn get_node_stream(
     data: Data<AppData>,
     source_name: web::Path<String>,
     wanted_info: web::Json<Vec<AudioNodeInfoStreamType>>,

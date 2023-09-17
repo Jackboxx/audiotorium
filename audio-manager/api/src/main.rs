@@ -1,4 +1,5 @@
 use brain::AudioBrain;
+use commands::node_commands::receive_node_cmd;
 use log::LevelFilter;
 
 use actix::{Actor, Addr};
@@ -9,6 +10,7 @@ use actix_web_actors::ws;
 
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
+use streams::node_streams::get_node_stream;
 
 use crate::brain_session::AudioBrainSession;
 
@@ -91,6 +93,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .wrap(cors)
             .service(get_con_to_queue)
+            .service(receive_node_cmd)
+            .service(get_node_stream)
     })
     .bind((addr, 50051))?
     .run()
