@@ -7,11 +7,12 @@ use serde::Serialize;
 use crate::{
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
+    streams::brain_streams::AudioBrainInfoStreamMessage,
     utils::create_player,
     AUDIO_SOURCES,
 };
 
-use super::brain_session::{AudioBrainSession, AudioBrainSessionInternalUpdateMessage};
+use super::brain_session::AudioBrainSession;
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
@@ -27,7 +28,7 @@ pub struct GetAudioNodeMessage {
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
-pub enum AudioBrainInternalUpdateMessages {
+pub enum AudioNodeToBrainMessage {
     NodeHealthUpdate((String, AudioNodeHealth)),
 }
 
@@ -132,22 +133,18 @@ impl Handler<BrainDisconnect> for AudioBrain {
     }
 }
 
-impl Handler<AudioBrainInternalUpdateMessages> for AudioBrain {
+impl Handler<AudioNodeToBrainMessage> for AudioBrain {
     type Result = ();
 
-    fn handle(
-        &mut self,
-        msg: AudioBrainInternalUpdateMessages,
-        _ctx: &mut Self::Context,
-    ) -> Self::Result {
+    fn handle(&mut self, msg: AudioNodeToBrainMessage, _ctx: &mut Self::Context) -> Self::Result {
         match &msg {
-            AudioBrainInternalUpdateMessages::NodeHealthUpdate(params) => {
+            AudioNodeToBrainMessage::NodeHealthUpdate(params) => {
                 let (source_name, health) = params;
 
                 if let Some((_, node_info)) = self.nodes.get_mut(source_name) {
                     node_info.health = health.clone();
 
-                    let msg = AudioBrainSessionInternalUpdateMessage::NodeInformationUpdate(
+                    let msg = AudioBrainInfoStreamMessage::NodeInfo(
                         self.nodes
                             .values()
                             .map(|(_, info)| info.to_owned())

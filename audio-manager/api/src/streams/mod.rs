@@ -1,21 +1,13 @@
 use core::fmt;
 
-use serde::{
-    de::{self, IntoDeserializer},
-    Deserialize,
-};
+use serde::de::{self, IntoDeserializer};
 
-use self::node_streams::AudioNodeInfoStreamType;
-
+pub mod brain_streams;
 pub mod node_streams;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct StreamWantedInfoParams {
-    #[serde(deserialize_with = "deserialize_stringified_list")]
-    wanted_info: Vec<AudioNodeInfoStreamType>,
-}
-
-fn deserialize_stringified_list<'de, D, I>(deserializer: D) -> std::result::Result<Vec<I>, D::Error>
+pub fn deserialize_stringified_list<'de, D, I>(
+    deserializer: D,
+) -> std::result::Result<Vec<I>, D::Error>
 where
     D: de::Deserializer<'de>,
     I: de::DeserializeOwned,

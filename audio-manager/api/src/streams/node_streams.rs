@@ -11,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
     audio::audio_player::{PlaybackInfo, ProcessorInfo, SerializableQueue},
     node::{node_server::AudioNodeHealth, node_session::AudioNodeSession},
-    streams::StreamWantedInfoParams,
+    streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
     AppData,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AudioNodeInfoStreamType {
     Queue,
@@ -46,6 +46,12 @@ pub struct DownloadInfo {
 pub struct AudioStateInfo {
     pub playback_info: PlaybackInfo,
     pub processor_info: ProcessorInfo,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StreamWantedInfoParams {
+    #[serde(deserialize_with = "deserialize_stringified_list")]
+    wanted_info: Vec<AudioNodeInfoStreamType>,
 }
 
 pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInfoStreamType {

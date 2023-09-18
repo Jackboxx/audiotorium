@@ -5,7 +5,7 @@ use crate::{
             AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue,
         },
     },
-    brain::brain_server::{AudioBrain, AudioBrainInternalUpdateMessages},
+    brain::brain_server::{AudioBrain, AudioNodeToBrainMessage},
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
@@ -318,7 +318,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
                 self.health = health.clone();
 
                 self.server_addr
-                    .do_send(AudioBrainInternalUpdateMessages::NodeHealthUpdate((
+                    .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
                         self.source_name.to_owned(),
                         health.clone(),
                     )));

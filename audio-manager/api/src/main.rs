@@ -4,15 +4,13 @@ use log::LevelFilter;
 
 use actix::{Actor, Addr};
 use actix_cors::Cors;
-use actix_web::web::{self, Data};
-use actix_web::{get, App, HttpRequest, HttpServer, Responder};
-use actix_web_actors::ws;
+use actix_web::web::Data;
+use actix_web::{App, HttpServer};
 
 use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
+use streams::brain_streams::get_brain_stream;
 use streams::node_streams::get_node_stream;
-
-use crate::brain::brain_session::AudioBrainSession;
 
 mod commands;
 mod streams;
@@ -36,19 +34,6 @@ pub struct AppData {
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
     error: String,
-}
-
-#[get("/queue")]
-async fn get_con_to_queue(
-    data: Data<AppData>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> impl Responder {
-    ws::start(
-        AudioBrainSession::new(data.brain_addr.clone()),
-        &req,
-        stream,
-    )
 }
 
 #[actix_web::main]
@@ -89,7 +74,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(data.clone())
             .wrap(cors)
-            .service(get_con_to_queue)
+            .service(get_brain_stream)
             .service(receive_node_cmd)
             .service(get_node_stream)
     })
