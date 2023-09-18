@@ -5,12 +5,13 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageRespons
 use serde::Serialize;
 
 use crate::{
-    brain_session::{AudioBrainSession, AudioBrainSessionInternalUpdateMessage},
     downloader::AudioDownloader,
-    node::{AudioNode, AudioNodeHealth, AudioNodeInfo},
+    node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     utils::create_player,
     AUDIO_SOURCES,
 };
+
+use super::brain_session::{AudioBrainSession, AudioBrainSessionInternalUpdateMessage};
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,

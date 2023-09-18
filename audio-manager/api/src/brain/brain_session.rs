@@ -7,9 +7,11 @@ use actix_web_actors::ws;
 use serde::Serialize;
 
 use crate::{
-    brain::{AudioBrain, BrainConnect, BrainDisconnect},
-    node::AudioNodeInfo,
+    brain::brain_server::{BrainConnect, BrainDisconnect},
+    node::node_server::AudioNodeInfo,
 };
+
+use super::brain_server::AudioBrain;
 
 #[derive(Debug, Clone)]
 pub struct AudioBrainSession {

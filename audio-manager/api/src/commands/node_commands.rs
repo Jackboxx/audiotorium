@@ -8,8 +8,9 @@ use actix_web::{
 use serde::Deserialize;
 
 use crate::{
-    audio_item::AudioMetaData, audio_player::LoopBounds, utils::get_node_by_source_name, AppData,
-    ErrorResponse,
+    audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
+    utils::get_node_by_source_name,
+    AppData, ErrorResponse,
 };
 
 /// Commands a client can send to an audio node

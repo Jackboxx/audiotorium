@@ -11,9 +11,9 @@ use cpal::{
 };
 
 use crate::{
-    audio_player::AudioPlayer,
-    brain::{AudioBrain, GetAudioNodeMessage},
-    node::AudioNode,
+    audio::audio_player::AudioPlayer,
+    brain::brain_server::{AudioBrain, GetAudioNodeMessage},
+    node::node_server::AudioNode,
 };
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;

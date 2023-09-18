@@ -9,9 +9,8 @@ use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio_player::{PlaybackInfo, ProcessorInfo, SerializableQueue},
-    node::AudioNodeHealth,
-    node_session::AudioNodeSession,
+    audio::audio_player::{PlaybackInfo, ProcessorInfo, SerializableQueue},
+    node::{node_server::AudioNodeHealth, node_session::AudioNodeSession},
     streams::StreamWantedInfoParams,
     utils::get_node_by_source_name,
     AppData,

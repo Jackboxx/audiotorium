@@ -8,12 +8,14 @@ use log::{error, info};
 use serde::Serialize;
 
 use crate::{
-    audio_player::SerializableQueue,
-    node::{AudioNode, NodeConnectMessage, NodeDisconnectMessage},
+    audio::audio_player::SerializableQueue,
+    node::node_server::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
     },
 };
+
+use super::node_server::AudioNode;
 
 pub struct AudioNodeSession {
     id: usize,
@@ -97,12 +99,9 @@ impl Handler<AudioNodeInfoStreamMessage> for AudioNodeSession {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for AudioNodeSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match &msg {
-            Ok(ws::Message::Close(reason)) => {
-                ctx.close(reason.clone());
-                ctx.stop();
-            }
-            _ => {}
+        if let Ok(ws::Message::Close(reason)) = msg {
+            ctx.close(reason.clone());
+            ctx.stop();
         }
     }
 }

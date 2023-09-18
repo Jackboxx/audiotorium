@@ -1,12 +1,15 @@
 use crate::{
-    audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
-    audio_player::{AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue},
-    brain::{AudioBrain, AudioBrainInternalUpdateMessages},
+    audio::{
+        audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
+        audio_player::{
+            AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue,
+        },
+    },
+    brain::brain_server::{AudioBrain, AudioBrainInternalUpdateMessages},
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
-    node_session::AudioNodeSession,
     streams::node_streams::{AudioNodeInfoStreamMessage, AudioStateInfo, DownloadInfo},
     ErrorResponse, AUDIO_DIR,
 };
@@ -17,6 +20,8 @@ use std::{
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
 use serde::Serialize;
+
+use super::node_session::AudioNodeSession;
 
 pub struct AudioNode {
     source_name: String,

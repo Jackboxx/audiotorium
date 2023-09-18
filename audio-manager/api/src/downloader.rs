@@ -1,4 +1,4 @@
-use crate::{ErrorResponse, audio_item::{AudioPlayerQueueItem, AudioMetaData}};
+use crate::{ErrorResponse, audio::audio_item::{AudioPlayerQueueItem, AudioMetaData}, };
 use std::{process::Command, path::PathBuf };
 
 use actix::{Actor, Context, Handler, Message, Recipient};

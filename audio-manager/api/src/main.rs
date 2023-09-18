@@ -1,4 +1,4 @@
-use brain::AudioBrain;
+use brain::brain_server::AudioBrain;
 use commands::node_commands::receive_node_cmd;
 use log::LevelFilter;
 
@@ -12,18 +12,15 @@ use downloader::AudioDownloader;
 use serde::{Deserialize, Serialize};
 use streams::node_streams::get_node_stream;
 
-use crate::brain_session::AudioBrainSession;
+use crate::brain::brain_session::AudioBrainSession;
 
 mod commands;
 mod streams;
 
-mod audio_item;
-mod audio_player;
+mod audio;
 mod brain;
-mod brain_session;
 mod downloader;
 mod node;
-mod node_session;
 mod utils;
 
 pub static AUDIO_DIR: &str = "audio";

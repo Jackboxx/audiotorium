@@ -9,14 +9,15 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
     commands::node_commands::AudioNodeCommand,
-    node::{
+    node::node_server::{
         AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
         AudioProcessorToNodeMessage,
     },
     utils::MessageRateLimiter,
 };
+
+use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
 
 type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
 pub type SerializableQueue = Vec<AudioMetaData>;
