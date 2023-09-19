@@ -1,40 +1,15 @@
-use brain::brain_server::AudioBrain;
-use commands::node_commands::receive_node_cmd;
+use actix::Actor;
+use audio_manager_api::brain::brain_server::AudioBrain;
+use audio_manager_api::commands::node_commands::receive_node_cmd;
+use audio_manager_api::downloader::AudioDownloader;
+use audio_manager_api::streams::brain_streams::get_brain_stream;
+use audio_manager_api::streams::node_streams::get_node_stream;
+use audio_manager_api::AppData;
 use log::LevelFilter;
 
-use actix::{Actor, Addr};
 use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
-
-use downloader::AudioDownloader;
-use serde::{Deserialize, Serialize};
-use streams::brain_streams::get_brain_stream;
-use streams::node_streams::get_node_stream;
-
-mod commands;
-mod streams;
-
-mod audio;
-mod brain;
-mod downloader;
-mod node;
-mod utils;
-
-pub static AUDIO_DIR: &str = "audio";
-
-pub static AUDIO_SOURCES: [(&str, &str); 2] =
-    [("Living Room", "living_room"), ("Office", "office")];
-
-pub struct AppData {
-    brain_addr: Addr<AudioBrain>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ErrorResponse {
-    error: String,
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
