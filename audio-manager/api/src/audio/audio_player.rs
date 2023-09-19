@@ -9,19 +9,24 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    audio_item::{AudioDataLocator, AudioPlayerQueueItem},
-    node::{
-        AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor, NodeInternalMessage,
-        SendClientQueueInfoNodeParams, UpdateNodeHealthParams,
+    commands::node_commands::AudioNodeCommand,
+    node::node_server::{
+        AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
+        AudioProcessorToNodeMessage,
     },
     utils::MessageRateLimiter,
 };
+
+use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
+
+type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
+pub type SerializableQueue = Vec<AudioMetaData>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
-    queue: Vec<AudioPlayerQueueItem<ADL>>,
+    queue: InternalQueue<ADL>,
     node_addr: Option<Addr<AudioNode>>,
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
@@ -313,24 +318,21 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         processor.read_disk_stream = None;
 
                         if let Some(addr) = addr.as_ref() {
-                            if let Err(err) = addr.try_send(NodeInternalMessage::PlayNext) {
+                            if let Err(err) = addr.try_send(AudioNodeCommand::PlayNext) {
                                 log::error!("failed to play next audio in queue, ERROR: {err}");
                             }
                         }
                     }
                     AudioStreamState::Buffering => {
-                        let msg = NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                            health: AudioNodeHealth::Mild(AudioNodeHealthMild::Buffering),
-                        });
+                        let msg = AudioProcessorToNodeMessage::Health(AudioNodeHealth::Mild(
+                            AudioNodeHealthMild::Buffering,
+                        ));
 
                         processor_rate_limiter.send_msg(msg, addr.as_ref());
                     }
                     AudioStreamState::Playing => {
-                        let msg = NodeInternalMessage::SendClientQueueInfo(
-                            SendClientQueueInfoNodeParams {
-                                processor_info: processor.info.clone(),
-                            },
-                        );
+                        let msg =
+                            AudioProcessorToNodeMessage::AudioStateInfo(processor.info.clone());
 
                         processor_rate_limiter.send_msg(msg, addr.as_ref());
                     }
@@ -338,9 +340,9 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                 Err(err) => {
                     log::error!("failed to process audio, ERROR: {err}");
 
-                    let msg = NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                        health: AudioNodeHealth::Poor(AudioNodeHealthPoor::AudioStreamReadFailed),
-                    });
+                    let msg = AudioProcessorToNodeMessage::Health(AudioNodeHealth::Poor(
+                        AudioNodeHealthPoor::AudioStreamReadFailed,
+                    ));
 
                     processor_rate_limiter.send_msg(msg, addr.as_ref());
                 }
@@ -348,18 +350,14 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             move |err| {
                 log::error!("failed to process audio, ERROR: {err}");
                 let msg = match err {
-                    StreamError::DeviceNotAvailable => {
-                        NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                            health: AudioNodeHealth::Poor(AudioNodeHealthPoor::DeviceNotAvailable),
-                        })
-                    }
+                    StreamError::DeviceNotAvailable => AudioProcessorToNodeMessage::Health(
+                        AudioNodeHealth::Poor(AudioNodeHealthPoor::DeviceNotAvailable),
+                    ),
 
                     StreamError::BackendSpecific { err } => {
-                        NodeInternalMessage::UpdateHealth(UpdateNodeHealthParams {
-                            health: AudioNodeHealth::Poor(AudioNodeHealthPoor::AudioBackendError(
-                                err.description,
-                            )),
-                        })
+                        AudioProcessorToNodeMessage::Health(AudioNodeHealth::Poor(
+                            AudioNodeHealthPoor::AudioBackendError(err.description),
+                        ))
                     }
                 };
 

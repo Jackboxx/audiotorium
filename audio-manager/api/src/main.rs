@@ -1,74 +1,15 @@
-use brain::AudioBrain;
+use actix::Actor;
+use audio_manager_api::brain::brain_server::AudioBrain;
+use audio_manager_api::commands::node_commands::receive_node_cmd;
+use audio_manager_api::downloader::AudioDownloader;
+use audio_manager_api::streams::brain_streams::get_brain_stream;
+use audio_manager_api::streams::node_streams::get_node_stream;
+use audio_manager_api::AppData;
 use log::LevelFilter;
 
-use actix::{Actor, Addr};
 use actix_cors::Cors;
-use actix_web::web::{self, Data};
-use actix_web::{get, App, HttpRequest, HttpServer, Responder};
-use actix_web_actors::ws;
-
-use downloader::AudioDownloader;
-use serde::{Deserialize, Serialize};
-
-use crate::brain::GetAudioNodeMessage;
-use crate::brain_session::AudioBrainSession;
-use crate::node_session::AudioNodeSession;
-
-mod audio_item;
-mod audio_player;
-mod brain;
-mod brain_session;
-mod downloader;
-mod node;
-mod node_session;
-mod utils;
-
-pub static AUDIO_DIR: &str = "audio";
-
-pub static AUDIO_SOURCES: [(&str, &str); 2] =
-    [("Living Room", "living_room"), ("Office", "office")];
-
-pub struct AppData {
-    brain_addr: Addr<AudioBrain>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ErrorResponse {
-    error: String,
-}
-
-#[get("/queue/{source_name}")]
-async fn get_con_to_device(
-    data: Data<AppData>,
-    source_name: web::Path<String>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> impl Responder {
-    let node_addr = data
-        .brain_addr
-        .send(GetAudioNodeMessage {
-            source_name: source_name.into_inner(),
-        })
-        .await
-        .unwrap()
-        .unwrap();
-
-    ws::start(AudioNodeSession::new(node_addr), &req, stream)
-}
-
-#[get("/queue")]
-async fn get_con_to_queue(
-    data: Data<AppData>,
-    req: HttpRequest,
-    stream: web::Payload,
-) -> impl Responder {
-    ws::start(
-        AudioBrainSession::new(data.brain_addr.clone()),
-        &req,
-        stream,
-    )
-}
+use actix_web::web::Data;
+use actix_web::{App, HttpServer};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -108,8 +49,9 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(data.clone())
             .wrap(cors)
-            .service(get_con_to_queue)
-            .service(get_con_to_device)
+            .service(get_brain_stream)
+            .service(receive_node_cmd)
+            .service(get_node_stream)
     })
     .bind((addr, 50051))?
     .run()

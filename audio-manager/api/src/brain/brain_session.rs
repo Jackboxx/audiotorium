@@ -1,42 +1,32 @@
 use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
-    Message, Running, StreamHandler, WrapFuture,
+    Running, StreamHandler, WrapFuture,
 };
 
 use actix_web_actors::ws;
-use serde::Serialize;
 
 use crate::{
-    brain::{AudioBrain, BrainConnect, BrainDisconnect},
-    node::AudioNodeInfo,
+    brain::brain_server::{BrainConnect, BrainDisconnect},
+    streams::brain_streams::{
+        get_type_of_stream_data, AudioBrainInfoStreamMessage, AudioBrainInfoStreamType,
+    },
 };
+
+use super::brain_server::AudioBrain;
 
 #[derive(Debug, Clone)]
 pub struct AudioBrainSession {
     id: usize,
     server_addr: Addr<AudioBrain>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[allow(clippy::enum_variant_names)]
-pub enum AudioBrainSessionResponse {
-    SessionConnectedResponse(Vec<AudioNodeInfo>),
-}
-
-#[derive(Debug, Clone, Serialize, Message)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[rtype(result = "()")]
-#[allow(clippy::enum_variant_names)]
-pub enum AudioBrainSessionInternalUpdateMessage {
-    NodeInformationUpdate(Vec<AudioNodeInfo>),
+    wanted_info: Vec<AudioBrainInfoStreamType>,
 }
 
 impl AudioBrainSession {
-    pub fn new(server_addr: Addr<AudioBrain>) -> Self {
+    pub fn new(server_addr: Addr<AudioBrain>, wanted_info: Vec<AudioBrainInfoStreamType>) -> Self {
         Self {
             id: usize::MAX,
             server_addr,
+            wanted_info,
         }
     }
 }
@@ -56,15 +46,6 @@ impl Actor for AudioBrainSession {
                     Ok(params) => {
                         log::info!("'AudioBrainSession' connected");
                         act.id = params.id;
-
-                        ctx.text(
-                            serde_json::to_string(
-                                &AudioBrainSessionResponse::SessionConnectedResponse(
-                                    params.sources,
-                                ),
-                            )
-                            .unwrap_or(String::from("[]")),
-                        );
                     }
 
                     Err(err) => {
@@ -88,16 +69,20 @@ impl Actor for AudioBrainSession {
     }
 }
 
-impl Handler<AudioBrainSessionInternalUpdateMessage> for AudioBrainSession {
+impl Handler<AudioBrainInfoStreamMessage> for AudioBrainSession {
     type Result = ();
 
     /// used to receive multicast messages from nodes
     fn handle(
         &mut self,
-        msg: AudioBrainSessionInternalUpdateMessage,
+        msg: AudioBrainInfoStreamMessage,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        ctx.text(serde_json::to_string(&msg).unwrap_or(String::from("{}")))
+        let msg_type = get_type_of_stream_data(&msg);
+
+        if self.wanted_info.contains(&msg_type) {
+            ctx.text(serde_json::to_string(&msg).unwrap_or(String::from("{}")))
+        }
     }
 }
 

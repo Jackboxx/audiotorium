@@ -1,5 +1,5 @@
 [package]
-name = "home-audio-manager-api"
+name = "audio-manager-api"
 version = "0.1.0"
 edition = "2021"
 
