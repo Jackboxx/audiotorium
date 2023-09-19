@@ -6,6 +6,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use actix_web_actors::ws;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +14,8 @@ use crate::{
     streams::deserialize_stringified_list, AppData,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AudioBrainInfoStreamType {
     NodeInfo,
 }
