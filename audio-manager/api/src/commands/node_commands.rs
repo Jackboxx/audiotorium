@@ -5,7 +5,7 @@ use actix_web::{
     web::{self, Data},
     HttpResponse,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
@@ -21,7 +21,7 @@ use crate::{
 /// { "ADD_QUEUE_ITEM": { "metadata": { "name": "the teacher" }, "url": "https://www.youtube.com/watch?v=6MF6trC529M"} }
 /// "PLAY_NEXT"
 ///
-#[derive(Debug, Clone, Deserialize, Message)]
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[rtype(result = "Result<(), ErrorResponse>")]
 pub enum AudioNodeCommand {
@@ -37,39 +37,39 @@ pub enum AudioNodeCommand {
     LoopQueue(LoopQueueParams),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddQueueItemParams {
     pub metadata: AudioMetaData,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveQueueItemParams {
     pub index: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaySelectedParams {
     pub index: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveQueueItemParams {
     pub old_pos: usize,
     pub new_pos: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetAudioProgressParams {
     pub progress: f64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoopQueueParams {
     pub bounds: Option<LoopBounds>,

@@ -1,12 +1,17 @@
 use itertools::Itertools;
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
-use audio_manager_api::streams::{
-    brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType,
+use audio_manager_api::{
+    audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
+    commands::node_commands::{
+        AddQueueItemParams, AudioNodeCommand, LoopQueueParams, MoveQueueItemParams,
+        PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
+    },
+    streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
 use clap::{Parser, Subcommand};
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct CliArgs {
     #[command(subcommand)]
@@ -19,23 +24,23 @@ pub struct CliArgs {
     pub port: u16,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum Action {
-    #[command(about = "TODO")]
+    #[command(about = "Send a command")]
     Send {
         #[command(subcommand)]
         con_type: SendConnectionType,
     },
-    #[command(about = "TODO")]
+    #[command(about = "Listen for data")]
     Listen {
         #[command(subcommand)]
         con_type: ListenConnectionType,
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum ListenConnectionType {
-    #[command(about = "TODO")]
+    #[command(about = "Listen for information from an audio device")]
     Node {
         #[arg(short, long)]
         /// Name of the node to connect to
@@ -44,7 +49,7 @@ pub enum ListenConnectionType {
         /// List of information to listen for
         wanted_info: Vec<AudioNodeInfoStreamType>,
     },
-    #[command(about = "TODO")]
+    #[command(about = "Listen for information from the master server")]
     Brain {
         #[arg(short, long, value_delimiter = ',')]
         /// List of information to listen for
@@ -52,16 +57,58 @@ pub enum ListenConnectionType {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum SendConnectionType {
-    #[command(about = "TODO")]
+    #[command(about = "Send a command to an udio device")]
     Node {
         #[arg(short, long)]
         /// Name of the node to connect to
         source_name: String,
+        #[command(subcommand)]
+        cmd: CliNodeCommand,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum CliNodeCommand {
+    AddQueueItem {
         #[arg(short, long)]
-        /// Command to send to the node
-        cmd: String,
+        url: String,
+        #[arg(short, long)]
+        name: String,
+        #[arg(short, long)]
+        author: Option<String>,
+        #[arg(short, long, value_parser = parse_duration)]
+        duration: Option<Duration>,
+        #[arg(short, long)]
+        thumbnail_url: Option<String>,
+    },
+    RemoveQueueItem {
+        index: usize,
+    },
+    MoveQueueItem {
+        #[arg(short, long)]
+        old_pos: usize,
+        #[arg(short, long)]
+        new_pos: usize,
+    },
+    SetAudioProgress {
+        #[arg(short, long)]
+        progress: f64,
+    },
+    PauseQueue,
+    UnPauseQueue,
+    PlayNext,
+    PlayPrevious,
+    PlaySelected {
+        #[arg(short, long)]
+        index: usize,
+    },
+    LoopQueue {
+        #[arg(short, long)]
+        start: Option<usize>,
+        #[arg(short, long)]
+        end: Option<usize>,
     },
 }
 
@@ -117,6 +164,75 @@ impl Action {
             Self::Send { con_type } => format!("{con_type}"),
         }
     }
+
+    fn get_body(&self) -> Option<String> {
+        match self {
+            Self::Send { con_type } => match con_type {
+                SendConnectionType::Node { cmd, .. } => {
+                    let audio_node_cmd: AudioNodeCommand = cmd.clone().into();
+                    let json_str = serde_json::to_string(&audio_node_cmd).unwrap();
+
+                    Some(json_str)
+                }
+            },
+            Self::Listen { .. } => None,
+        }
+    }
+}
+
+impl From<CliNodeCommand> for AudioNodeCommand {
+    fn from(value: CliNodeCommand) -> Self {
+        match value {
+            CliNodeCommand::AddQueueItem {
+                url,
+                name,
+                author,
+                duration,
+                thumbnail_url,
+            } => AudioNodeCommand::AddQueueItem(AddQueueItemParams {
+                metadata: AudioMetaData {
+                    name,
+                    author,
+                    duration,
+                    thumbnail_url,
+                },
+                url,
+            }),
+            CliNodeCommand::RemoveQueueItem { index } => {
+                AudioNodeCommand::RemoveQueueItem(RemoveQueueItemParams { index })
+            }
+            CliNodeCommand::MoveQueueItem { old_pos, new_pos } => {
+                AudioNodeCommand::MoveQueueItem(MoveQueueItemParams { old_pos, new_pos })
+            }
+            CliNodeCommand::SetAudioProgress { progress } => {
+                AudioNodeCommand::SetAudioProgress(SetAudioProgressParams { progress })
+            }
+            CliNodeCommand::PauseQueue => AudioNodeCommand::PauseQueue,
+            CliNodeCommand::UnPauseQueue => AudioNodeCommand::UnPauseQueue,
+            CliNodeCommand::PlayNext => AudioNodeCommand::PlayNext,
+            CliNodeCommand::PlayPrevious => AudioNodeCommand::PlayPrevious,
+            CliNodeCommand::PlaySelected { index } => {
+                AudioNodeCommand::PlaySelected(PlaySelectedParams { index })
+            }
+            CliNodeCommand::LoopQueue { start, end } => {
+                if start.is_some() && end.is_some() {
+                    AudioNodeCommand::LoopQueue(LoopQueueParams {
+                        bounds: Some(LoopBounds {
+                            start: start.unwrap(),
+                            end: end.unwrap(),
+                        }),
+                    })
+                } else {
+                    AudioNodeCommand::LoopQueue(LoopQueueParams { bounds: None })
+                }
+            }
+        }
+    }
+}
+
+fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
+    let seconds = arg.parse()?;
+    Ok(std::time::Duration::from_secs(seconds))
 }
 
 fn main() -> Result<(), &'static str> {
@@ -124,6 +240,7 @@ fn main() -> Result<(), &'static str> {
 
     let (prefix, action_endpoint) = args.action.get_prefix_and_endpoint();
     let con_endpoint = args.action.get_con_type_endpoint();
+    let body = args.action.get_body().unwrap_or_default();
 
     let addr = format!(
         "{prefix}://{addr}:{port}/{action_endpoint}/{con_endpoint}",
@@ -132,6 +249,7 @@ fn main() -> Result<(), &'static str> {
     );
 
     println!("{addr}");
+    println!("{body}");
 
     Ok(())
 }
