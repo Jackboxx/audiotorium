@@ -22,6 +22,9 @@ pub struct CliArgs {
     #[arg(short, long, default_value_t = 50051)]
     /// Port to connect to
     pub port: u16,
+    #[arg(short, long)]
+    /// Only print URL and body instead of performing network actions
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -235,21 +238,31 @@ fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
     Ok(std::time::Duration::from_secs(seconds))
 }
 
+fn get_url_and_body(action: &Action, addr: String, port: u16) -> (String, String) {
+    let (prefix, action_endpoint) = action.get_prefix_and_endpoint();
+    let con_endpoint = action.get_con_type_endpoint();
+
+    let body = action.get_body().unwrap_or_default();
+    let addr = format!(
+        "{prefix}://{addr}:{port}/{action_endpoint}/{con_endpoint}",
+        addr = addr,
+        port = port,
+    );
+
+    (addr, body)
+}
+
 fn main() -> Result<(), &'static str> {
     let args = CliArgs::parse();
 
-    let (prefix, action_endpoint) = args.action.get_prefix_and_endpoint();
-    let con_endpoint = args.action.get_con_type_endpoint();
-    let body = args.action.get_body().unwrap_or_default();
+    let (url, body) = get_url_and_body(&args.action, args.addr, args.port);
 
-    let addr = format!(
-        "{prefix}://{addr}:{port}/{action_endpoint}/{con_endpoint}",
-        addr = args.addr,
-        port = args.port,
-    );
-
-    println!("{addr}");
-    println!("{body}");
+    if args.dry_run {
+        println!("{url}");
+        println!("{body}");
+    } else {
+        todo!("perform network actions");
+    }
 
     Ok(())
 }
