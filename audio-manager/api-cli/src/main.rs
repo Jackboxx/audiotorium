@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use reqwest::Client;
 use std::{fmt::Display, time::Duration};
+use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
     audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
@@ -123,7 +124,7 @@ impl Display for ListenConnectionType {
                 "brain?wanted_info={info}",
                 info = wanted_info
                     .iter()
-                    .map(|i| serde_json::to_string(i).unwrap())
+                    .map(|i| serde_json::to_string(i).unwrap().replace('"', ""))
                     .collect_vec()
                     .join(",")
             ),
@@ -134,7 +135,7 @@ impl Display for ListenConnectionType {
                 "node/{source_name}?wanted_info={info}",
                 info = wanted_info
                     .iter()
-                    .map(|i| serde_json::to_string(i).unwrap())
+                    .map(|i| serde_json::to_string(i).unwrap().replace('"', ""))
                     .collect_vec()
                     .join(",")
             ),
@@ -260,6 +261,25 @@ async fn send_command(url: &str, body: String) -> Result<String, reqwest::Error>
     Ok(res.text().await?)
 }
 
+fn listen_on_socket(url: &str) {
+    let client = ClientBuilder::new(url)
+        .unwrap()
+        .add_protocol("rust-websocket")
+        .connect_insecure()
+        .unwrap();
+
+    let (mut receiver, _) = client.split().unwrap();
+
+    for message in receiver.incoming_messages() {
+        match message {
+            Ok(OwnedMessage::Text(text)) => {
+                println!("{text}")
+            }
+            _ => {}
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), &'static str> {
     let args = CliArgs::parse();
@@ -275,7 +295,9 @@ async fn main() -> Result<(), &'static str> {
                 let out = send_command(&url, body).await.unwrap();
                 println!("{out}");
             }
-            Action::Listen { .. } => todo!("help"),
+            Action::Listen { .. } => {
+                listen_on_socket(&url);
+            }
         }
     }
 
