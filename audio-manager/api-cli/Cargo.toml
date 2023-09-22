@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.4", features = ["derive"] }
 itertools = "0.11.0"
+reqwest = "0.11.20"
 serde_json = "1.0.107"
+tokio = { version = "1.32.0", features = ["full"] }
 
 [dependencies.audio-manager-api]
 path = "../api"

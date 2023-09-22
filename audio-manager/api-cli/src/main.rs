@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use reqwest::Client;
 use std::{fmt::Display, time::Duration};
 
 use audio_manager_api::{
@@ -252,7 +253,15 @@ fn get_url_and_body(action: &Action, addr: String, port: u16) -> (String, String
     (addr, body)
 }
 
-fn main() -> Result<(), &'static str> {
+async fn send_command(url: &str, body: String) -> Result<String, reqwest::Error> {
+    let client = Client::new();
+    let res = client.post(url).body(body).send().await?;
+
+    Ok(res.text().await?)
+}
+
+#[tokio::main]
+async fn main() -> Result<(), &'static str> {
     let args = CliArgs::parse();
 
     let (url, body) = get_url_and_body(&args.action, args.addr, args.port);
@@ -261,7 +270,13 @@ fn main() -> Result<(), &'static str> {
         println!("{url}");
         println!("{body}");
     } else {
-        todo!("perform network actions");
+        match args.action {
+            Action::Send { .. } => {
+                let out = send_command(&url, body).await.unwrap();
+                println!("{out}");
+            }
+            Action::Listen { .. } => todo!("help"),
+        }
     }
 
     Ok(())
