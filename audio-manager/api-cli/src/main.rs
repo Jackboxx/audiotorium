@@ -148,7 +148,7 @@ impl Display for ListenConnectionType {
 impl Display for SendConnectionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self {
-            Self::Node { source_name, .. } => format!("commands/{source_name}"),
+            Self::Node { source_name, .. } => format!("node/{source_name}"),
         };
 
         write!(f, "{str}")
@@ -167,20 +167,6 @@ impl Action {
         match self {
             Self::Listen { con_type } => format!("{con_type}"),
             Self::Send { con_type } => format!("{con_type}"),
-        }
-    }
-
-    fn get_body(&self) -> Option<String> {
-        match self {
-            Self::Send { con_type } => match con_type {
-                SendConnectionType::Node { cmd, .. } => {
-                    let audio_node_cmd: AudioNodeCommand = cmd.clone().into();
-                    let json_str = serde_json::to_string(&audio_node_cmd).unwrap();
-
-                    Some(json_str)
-                }
-            },
-            Self::Listen { .. } => None,
         }
     }
 }
@@ -240,23 +226,29 @@ fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
     Ok(std::time::Duration::from_secs(seconds))
 }
 
-fn get_url_and_body(action: &Action, addr: String, port: u16) -> (String, String) {
+fn get_url(action: &Action, addr: String, port: u16) -> String {
     let (prefix, action_endpoint) = action.get_prefix_and_endpoint();
     let con_endpoint = action.get_con_type_endpoint();
 
-    let body = action.get_body().unwrap_or_default();
-    let addr = format!(
+    format!(
         "{prefix}://{addr}:{port}/{action_endpoint}/{con_endpoint}",
         addr = addr,
         port = port,
-    );
-
-    (addr, body)
+    )
 }
 
-async fn send_command(url: &str, body: String) -> Result<String, reqwest::Error> {
+fn get_body(action: &Action) -> Option<AudioNodeCommand> {
+    match action {
+        Action::Send { con_type } => match con_type {
+            SendConnectionType::Node { cmd, .. } => Some(cmd.clone().into()),
+        },
+        _ => None,
+    }
+}
+
+async fn send_command(url: &str, body: &AudioNodeCommand) -> Result<String, reqwest::Error> {
     let client = Client::new();
-    let res = client.post(url).body(body).send().await?;
+    let res = client.post(url).json(body).send().await?;
 
     Ok(res.text().await?)
 }
@@ -284,15 +276,20 @@ fn listen_on_socket(url: &str) {
 async fn main() -> Result<(), &'static str> {
     let args = CliArgs::parse();
 
-    let (url, body) = get_url_and_body(&args.action, args.addr, args.port);
+    let url = get_url(&args.action, args.addr, args.port);
+    let body = get_body(&args.action);
 
     if args.dry_run {
+        let str_body = body
+            .map(|b| serde_json::to_string(&b).unwrap())
+            .unwrap_or_default();
+
         println!("{url}");
-        println!("{body}");
+        println!("{str_body}");
     } else {
         match args.action {
             Action::Send { .. } => {
-                let out = send_command(&url, body).await.unwrap();
+                let out = send_command(&url, body.as_ref().unwrap()).await.unwrap();
                 println!("{out}");
             }
             Action::Listen { .. } => {
