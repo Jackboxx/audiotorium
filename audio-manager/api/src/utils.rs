@@ -20,33 +20,51 @@ pub struct MessageRateLimiter {
     hard_rate_limit: Duration,
 }
 
+#[derive(Debug, Clone)]
+pub struct ChangeNotifier<M>
+where
+    M: Message + Send + Clone + PartialEq,
+    M::Result: Send,
+{
+    last_msg_sent: Option<M>,
+}
+
 impl MessageRateLimiter {
-    pub fn send_msg<M, H>(&mut self, msg: M, addr: Option<&Addr<H>>)
+    pub fn send_msg<M, H>(&mut self, msg: M, addr: &Addr<H>)
     where
         M: Message + Send,
         M::Result: Send,
         H: Handler<M>,
         <H as Actor>::Context: ToEnvelope<H, M>,
     {
-        let Some(addr) = addr else { return };
-
         if Instant::now().duration_since(self.last_msg_sent_at) > self.hard_rate_limit {
             self.last_msg_sent_at = Instant::now();
             addr.do_send(msg);
         }
     }
+}
 
-    pub fn send_msg_urgent<M, H>(&mut self, msg: M, addr: Option<&Addr<H>>)
+impl<M> ChangeNotifier<M>
+where
+    M: Message + Send + Clone + PartialEq,
+    M::Result: Send,
+{
+    pub fn new(default_msg: Option<M>) -> Self {
+        Self {
+            last_msg_sent: default_msg,
+        }
+    }
+
+    pub fn send_msg<H>(&mut self, msg: M, addr: &Addr<H>)
     where
-        M: Message + Send,
-        M::Result: Send,
         H: Handler<M>,
         <H as Actor>::Context: ToEnvelope<H, M>,
     {
-        let Some(addr) = addr else { return };
-
-        self.last_msg_sent_at = Instant::now();
-        addr.do_send(msg);
+        let option_msg = Some(msg.clone());
+        if option_msg != self.last_msg_sent {
+            self.last_msg_sent = option_msg;
+            addr.do_send(msg);
+        }
     }
 }
 

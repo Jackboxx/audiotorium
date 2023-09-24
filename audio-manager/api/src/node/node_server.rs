@@ -39,26 +39,26 @@ pub struct AudioNodeInfo {
     pub health: AudioNodeHealth,
 }
 
-#[derive(Debug, Clone, Message)]
+#[derive(Debug, Clone, Message, PartialEq)]
 #[rtype(result = "()")]
 pub enum AudioProcessorToNodeMessage {
     AudioStateInfo(ProcessorInfo),
     Health(AudioNodeHealth),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum AudioNodeHealth {
     Good,
     Mild(AudioNodeHealthMild),
     Poor(AudioNodeHealthPoor),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub enum AudioNodeHealthMild {
     Buffering,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum AudioNodeHealthPoor {
     DeviceNotAvailable,
     AudioStreamReadFailed,
