@@ -348,7 +348,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         AudioNodeHealthPoor::AudioStreamReadFailed,
                     ));
 
-                    processor_rate_limiter.send_msg(msg, addr.as_ref());
+                    processor_rate_limiter.send_msg_urgent(msg, addr.as_ref());
                 }
             },
             move |err| {
@@ -365,7 +365,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                     }
                 };
 
-                processor_rate_limiter_for_err.send_msg(msg, addr_for_err.as_ref());
+                processor_rate_limiter_for_err.send_msg_urgent(msg, addr_for_err.as_ref());
             },
             None,
         )?;

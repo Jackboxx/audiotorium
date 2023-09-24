@@ -39,6 +39,19 @@ impl MessageRateLimiter {
             addr.do_send(msg);
         }
     }
+
+    pub fn send_msg_urgent<M, H>(&mut self, msg: M, addr: Option<&Addr<H>>)
+    where
+        M: Message + Send,
+        M::Result: Send,
+        H: Handler<M>,
+        <H as Actor>::Context: ToEnvelope<H, M>,
+    {
+        let Some(addr) = addr else { return };
+
+        self.last_msg_sent_at = Instant::now();
+        addr.do_send(msg);
+    }
 }
 
 impl Default for MessageRateLimiter {
