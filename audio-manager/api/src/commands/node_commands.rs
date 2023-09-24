@@ -89,8 +89,13 @@ pub async fn receive_node_cmd(
         }
     };
 
-    match node_addr.try_send(cmd.into_inner()) {
-        Ok(()) => HttpResponse::new(StatusCode::OK),
+    match node_addr.send(cmd.into_inner()).await {
+        Ok(res) => match res {
+            Ok(()) => HttpResponse::new(StatusCode::OK),
+            Err(err) => HttpResponse::InternalServerError().body(
+                serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned()),
+            ),
+        },
         Err(_) => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
