@@ -32,7 +32,6 @@ pub struct AudioPlayer<ADL: AudioDataLocator> {
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     loop_start_end: Option<(usize, usize)>,
-    playback_info: PlaybackInfo,
 }
 
 struct AudioProcessor {
@@ -45,14 +44,14 @@ struct AudioProcessor {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackInfo {
-    current_head_index: usize,
+    pub current_head_index: usize,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessorInfo {
-    playback_state: PlaybackState,
-    audio_progress: f64,
+    pub playback_state: PlaybackState,
+    pub audio_progress: f64,
 }
 
 #[derive(Debug)]
@@ -98,14 +97,11 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             processor_msg_buffer: None,
             node_addr,
             queue_head: 0,
-            playback_info: PlaybackInfo {
-                current_head_index: 0,
-            },
             loop_start_end: None,
         })
     }
 
-    pub fn try_restore_device(&mut self, current_progress: f64) -> bool {
+    pub fn try_recover_device(&mut self, current_progress: f64) -> bool {
         let (device, config) = match setup_device(&self.source_name) {
             Ok(res) => res,
             Err(_) => return false,
@@ -299,9 +295,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
-    /// updates `queue_head` and `playback_info`
     pub fn update_queue_head(&mut self, value: usize) {
-        self.playback_info.current_head_index = value;
         self.queue_head = value;
     }
 
@@ -309,8 +303,8 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         &self.queue
     }
 
-    pub fn playback_info(&self) -> &PlaybackInfo {
-        &self.playback_info
+    pub fn queue_head(&self) -> usize {
+        self.queue_head
     }
 
     pub fn set_addr(&mut self, node_addr: Option<Addr<AudioNode>>) {

@@ -25,6 +25,7 @@ use super::node_session::AudioNodeSession;
 
 pub struct AudioNode {
     source_name: String,
+    current_audio_progress: f64,
     player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
     server_addr: Addr<AudioBrain>,
@@ -126,6 +127,7 @@ impl AudioNode {
     ) -> Self {
         Self {
             source_name,
+            current_audio_progress: 0.0,
             player,
             downloader_addr,
             server_addr,
@@ -315,19 +317,50 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
     ) -> Self::Result {
         match msg {
             AudioProcessorToNodeMessage::Health(health) => {
-                self.health = health.clone();
+                let health_update = match (&self.health, &health) {
+                    (AudioNodeHealth::Good, AudioNodeHealth::Poor(_)) => {
+                        let device_health_restored =
+                            self.player.try_recover_device(self.current_audio_progress);
+                        if !device_health_restored {
+                            Some(health)
+                        } else {
+                            None
+                        }
+                    }
+                    (
+                        AudioNodeHealth::Mild(_) | AudioNodeHealth::Poor(_),
+                        AudioNodeHealth::Poor(_),
+                    ) => {
+                        let device_health_restored =
+                            self.player.try_recover_device(self.current_audio_progress);
+                        if device_health_restored {
+                            Some(AudioNodeHealth::Good)
+                        } else {
+                            Some(health)
+                        }
+                    }
+                    _ => Some(health),
+                };
 
-                self.server_addr
-                    .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
-                        self.source_name.to_owned(),
-                        health.clone(),
-                    )));
+                if let Some(health) = health_update {
+                    self.health = health.clone();
 
-                self.multicast(AudioNodeInfoStreamMessage::Health(health));
+                    self.server_addr
+                        .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
+                            self.source_name.to_owned(),
+                            health.clone(),
+                        )));
+
+                    self.multicast(AudioNodeInfoStreamMessage::Health(health));
+                }
             }
             AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
+                self.current_audio_progress = processor_info.audio_progress;
+
                 let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioStateInfo {
-                    playback_info: self.player.playback_info().clone(),
+                    playback_info: PlaybackInfo {
+                        current_head_index: self.player.queue_head(),
+                    },
                     processor_info,
                 });
 
