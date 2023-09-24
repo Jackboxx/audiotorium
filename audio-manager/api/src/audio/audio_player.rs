@@ -297,6 +297,10 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
     }
 
     fn play(&mut self, locator: &ADL) -> anyhow::Result<()> {
+        // prevent bluez-alsa from throwing error 'device busy' by removing the stream accessing
+        // the bluetooth device before creating a new stream
+        self.current_stream = None;
+
         let read_disk_stream = locator.load_audio_data()?;
 
         let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(1);
