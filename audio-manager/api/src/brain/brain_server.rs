@@ -5,10 +5,10 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageRespons
 use serde::Serialize;
 
 use crate::{
+    audio::audio_player::AudioPlayer,
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     streams::brain_streams::AudioBrainInfoStreamMessage,
-    utils::create_player,
     AUDIO_SOURCES,
 };
 
@@ -80,7 +80,7 @@ impl Actor for AudioBrain {
         log::info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
         for (human_readable_name, source_name) in AUDIO_SOURCES {
-            if let Ok(player) = create_player(source_name) {
+            if let Ok(player) = AudioPlayer::try_new(source_name.to_owned(), None) {
                 let node = AudioNode::new(
                     source_name.to_owned(),
                     player,

@@ -14,7 +14,7 @@ use crate::{
         AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
         AudioProcessorToNodeMessage,
     },
-    utils::MessageRateLimiter,
+    utils::{setup_device, MessageRateLimiter},
 };
 
 use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
@@ -23,6 +23,7 @@ type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
 pub type SerializableQueue = Vec<AudioMetaData>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
+    source_name: String,
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
@@ -83,8 +84,13 @@ pub enum AudioProcessorMessage {
 }
 
 impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
-    pub fn new(device: Device, config: StreamConfig, node_addr: Option<Addr<AudioNode>>) -> Self {
-        Self {
+    pub fn try_new(
+        source_name: String,
+        node_addr: Option<Addr<AudioNode>>,
+    ) -> anyhow::Result<Self> {
+        let (device, config) = setup_device(&source_name)?;
+        Ok(Self {
+            source_name,
             device,
             config,
             queue: Vec::new(),
@@ -96,7 +102,22 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                 current_head_index: 0,
             },
             loop_start_end: None,
-        }
+        })
+    }
+
+    pub fn try_restore_device(&mut self, current_progress: f64) -> bool {
+        let (device, config) = match setup_device(&self.source_name) {
+            Ok(res) => res,
+            Err(_) => return false,
+        };
+
+        self.device = device;
+        self.config = config;
+
+        let _ = self.play_selected(self.queue_head);
+        self.set_stream_progress(current_progress);
+
+        true
     }
 
     pub fn play_next(&mut self) -> anyhow::Result<()> {

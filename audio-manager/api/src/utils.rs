@@ -1,17 +1,13 @@
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use actix::{dev::ToEnvelope, Actor, Addr, Handler, Message};
 use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, HostTrait},
-    SampleRate,
+    Device, SampleRate, StreamConfig,
 };
 
 use crate::{
-    audio::audio_player::AudioPlayer,
     brain::brain_server::{AudioBrain, GetAudioNodeMessage},
     node::node_server::AudioNode,
 };
@@ -70,7 +66,7 @@ pub async fn get_node_by_source_name(
     addr.send(GetAudioNodeMessage { source_name }).await.ok()?
 }
 
-pub fn create_player(source_name: &str) -> anyhow::Result<AudioPlayer<PathBuf>> {
+pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)> {
     let host = cpal::default_host();
     let device = host
         .output_devices()?
@@ -90,5 +86,5 @@ pub fn create_player(source_name: &str) -> anyhow::Result<AudioPlayer<PathBuf>> 
         .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE * channel_count))
         .into();
 
-    Ok(AudioPlayer::new(device, config, None))
+    Ok((device, config))
 }
