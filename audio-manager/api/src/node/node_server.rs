@@ -324,6 +324,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
                         if !device_health_restored {
                             Some(health)
                         } else {
+                            log::info!("recovered device health for {}", self.source_name);
                             None
                         }
                     }
