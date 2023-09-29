@@ -11,6 +11,9 @@ pub mod downloader;
 pub mod node;
 pub mod utils;
 
+#[cfg(test)]
+pub mod tests_utils;
+
 pub static AUDIO_DIR: &str = "audio";
 
 pub static AUDIO_SOURCES: [(&str, &str); 2] =

@@ -106,3 +106,51 @@ pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)>
 
     Ok((device, config))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::tests_utils::{GetReceivedMessageCount, TestMessage, TestMessageHandler};
+
+    use super::*;
+
+    #[actix_web::test]
+    async fn test_change_notifier() {
+        {
+            let test_handler = TestMessageHandler::new(Some("test".into()));
+            let addr = test_handler.start();
+
+            let mut notifier = ChangeNotifier::<TestMessage>::new(None);
+            notifier.send_msg("test".into(), &addr);
+
+            notifier.send_msg("test".into(), &addr); // will not be received due to change
+
+            let msg_count = addr.send(GetReceivedMessageCount).await.unwrap();
+            pretty_assertions::assert_eq!(msg_count, 1);
+        }
+
+        {
+            let test_handler = TestMessageHandler::new(Some("test".into()));
+            let addr = test_handler.start();
+
+            let mut notifier = ChangeNotifier::<TestMessage>::new(Some("test".into()));
+            notifier.send_msg("test".into(), &addr);
+
+            let msg_count = addr.send(GetReceivedMessageCount).await.unwrap();
+            pretty_assertions::assert_eq!(msg_count, 0);
+        }
+
+        {
+            let test_handler = TestMessageHandler::new(None);
+            let addr = test_handler.start();
+
+            let mut notifier = ChangeNotifier::<TestMessage>::new(None);
+            notifier.send_msg("test 1".into(), &addr); // send
+            notifier.send_msg("test 2".into(), &addr); // send
+            notifier.send_msg("test 1".into(), &addr); // send
+            notifier.send_msg("test 1".into(), &addr); // ignore
+
+            let msg_count = addr.send(GetReceivedMessageCount).await.unwrap();
+            pretty_assertions::assert_eq!(msg_count, 3);
+        }
+    }
+}
