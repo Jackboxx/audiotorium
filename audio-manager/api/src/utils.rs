@@ -107,11 +107,28 @@ pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)>
     Ok((device, config))
 }
 
+pub fn type_as_str<'a, T: Sized>(_v: &T) -> &'a str {
+    std::any::type_name::<T>()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::tests_utils::{GetReceivedMessageCount, TestMessage, TestMessageHandler};
 
     use super::*;
+
+    #[test]
+    fn test_type_as_str() {
+        let input = type_as_str(&"hello");
+        pretty_assertions::assert_eq!(input, "&str");
+
+        struct TestStruct;
+        let input = type_as_str(&TestStruct);
+        pretty_assertions::assert_eq!(
+            input,
+            "audio_manager_api::utils::tests::test_type_as_str::TestStruct"
+        )
+    }
 
     #[actix_web::test]
     async fn test_change_notifier() {

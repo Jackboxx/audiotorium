@@ -9,6 +9,7 @@ use crate::{
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     streams::brain_streams::AudioBrainInfoStreamMessage,
+    utils::type_as_str,
     AUDIO_SOURCES,
 };
 
@@ -109,6 +110,12 @@ impl Handler<BrainConnect> for AudioBrain {
     type Result = BrainConnectResponse;
 
     fn handle(&mut self, msg: BrainConnect, _ctx: &mut Self::Context) -> Self::Result {
+        log::info!(
+            "{} received message {}\ncontent: {msg:?}",
+            type_as_str(&self),
+            type_as_str(&msg)
+        );
+
         let BrainConnect { addr } = msg;
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
 
@@ -128,6 +135,12 @@ impl Handler<BrainConnect> for AudioBrain {
 impl Handler<BrainDisconnect> for AudioBrain {
     type Result = ();
     fn handle(&mut self, msg: BrainDisconnect, _ctx: &mut Self::Context) -> Self::Result {
+        log::info!(
+            "{} received message {}\ncontent: {msg:?}",
+            type_as_str(&self),
+            type_as_str(&msg)
+        );
+
         let BrainDisconnect { id } = msg;
         self.sessions.remove(&id);
     }
@@ -137,6 +150,12 @@ impl Handler<AudioNodeToBrainMessage> for AudioBrain {
     type Result = ();
 
     fn handle(&mut self, msg: AudioNodeToBrainMessage, _ctx: &mut Self::Context) -> Self::Result {
+        log::info!(
+            "{} received message {}\ncontent: {msg:?}",
+            type_as_str(&self),
+            type_as_str(&msg)
+        );
+
         match &msg {
             AudioNodeToBrainMessage::NodeHealthUpdate(params) => {
                 let (source_name, health) = params;
@@ -162,6 +181,12 @@ impl Handler<GetAudioNodeMessage> for AudioBrain {
     type Result = Option<Addr<AudioNode>>;
 
     fn handle(&mut self, msg: GetAudioNodeMessage, _ctx: &mut Self::Context) -> Self::Result {
+        log::info!(
+            "{} received message {}\ncontent: {msg:?}",
+            type_as_str(&self),
+            type_as_str(&msg)
+        );
+
         self.nodes
             .get(&msg.source_name)
             .and_then(|v| match v.1.health {

@@ -1,5 +1,9 @@
-use crate::{ErrorResponse, audio::audio_item::{AudioPlayerQueueItem, AudioMetaData}, };
-use std::{process::Command, path::PathBuf };
+use crate::{
+    audio::audio_item::{AudioMetaData, AudioPlayerQueueItem},
+    utils::type_as_str,
+    ErrorResponse,
+};
+use std::{path::PathBuf, process::Command};
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use anyhow::anyhow;
@@ -36,35 +40,54 @@ impl Actor for AudioDownloader {
 }
 
 impl Handler<DownloadAudio> for AudioDownloader {
-    type Result = (); 
+    type Result = ();
 
     fn handle(&mut self, msg: DownloadAudio, _ctx: &mut Self::Context) -> Self::Result {
-        let DownloadAudio { addr, path, url }  = msg;
+        log::info!(
+            "{} received message {}\ncontent: {msg:?}",
+            type_as_str(&self),
+            type_as_str(&msg)
+        );
 
-        let Some(str_path) = path.to_str() else { 
+        let DownloadAudio { addr, path, url } = msg;
+
+        let Some(str_path) = path.to_str() else {
             log::error!("path {path:?} can't be converted to a string");
-            addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: "failed to construct valid path".to_owned() }) });
+            addr.do_send(NotifyDownloadFinished {
+                result: Err(ErrorResponse {
+                    error: "failed to construct valid path".to_owned(),
+                }),
+            });
             return;
         };
 
         if let Err(err) = download_audio(&url, str_path) {
             log::error!("failed to download video, URL: {url}, ERROR: {err}");
-            addr.do_send(NotifyDownloadFinished { result: Err(ErrorResponse { error: format!("failed to download video with url: {url}, ERROR: {err}") })});
+            addr.do_send(NotifyDownloadFinished {
+                result: Err(ErrorResponse {
+                    error: format!("failed to download video with url: {url}, ERROR: {err}"),
+                }),
+            });
             return;
         }
 
         let path_with_ext = path.with_extension("mp3");
         let item = AudioPlayerQueueItem {
             metadata: AudioMetaData {
-                name: path.file_stem().map(|os_str| os_str.to_string_lossy().to_string()).unwrap_or(String::new()),
+                name: path
+                    .file_stem()
+                    .map(|os_str| os_str.to_string_lossy().to_string())
+                    .unwrap_or(String::new()),
                 author: None,
                 duration: None,
-                thumbnail_url: None
+                thumbnail_url: None,
             },
             locator: path_with_ext,
         };
 
-        addr.do_send(NotifyDownloadFinished { result: Ok(DownloadAudioResponse { item }) });
+        addr.do_send(NotifyDownloadFinished {
+            result: Ok(DownloadAudioResponse { item }),
+        });
     }
 }
 
