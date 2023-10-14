@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     commands::node_commands::AudioNodeCommand,
-    message_handler::{ChangeDetector, MessageSendHandler, RateLimiter},
+    message_send_handler::{ChangeDetector, MessageSendHandler, RateLimiter},
     node::node_server::{
         AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
         AudioProcessorToNodeMessage,

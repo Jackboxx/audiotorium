@@ -8,7 +8,7 @@ pub mod streams;
 pub mod audio;
 pub mod brain;
 pub mod downloader;
-pub mod message_handler;
+pub mod message_send_handler;
 pub mod node;
 pub mod utils;
 
