@@ -3,7 +3,7 @@ use actix::{Actor, Context, Handler, Message};
 #[derive(Debug, Clone, PartialEq, Eq, Message)]
 #[rtype(result = "()")]
 pub struct TestMessage {
-    value: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Message)]

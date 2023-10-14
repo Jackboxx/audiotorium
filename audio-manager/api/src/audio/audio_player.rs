@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     commands::node_commands::AudioNodeCommand,
+    message_handler::{ChangeDetector, MessageSendHandler, RateLimiter},
     node::node_server::{
         AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
         AudioProcessorToNodeMessage,
     },
-    utils::{setup_device, ChangeNotifier, MessageRateLimiter},
+    utils::setup_device,
 };
 
 use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
@@ -323,14 +324,19 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
         let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
 
-        let mut change_notifier = ChangeNotifier::<AudioProcessorToNodeMessage>::new(Some(
-            AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good),
-        ));
-        let mut change_notifier_for_err = ChangeNotifier::<AudioProcessorToNodeMessage>::new(Some(
-            AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good),
-        ));
+        let mut msg_handler = MessageSendHandler::with_limiters(vec![
+            Box::new(ChangeDetector::<AudioProcessorToNodeMessage>::new(Some(
+                AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good),
+            ))),
+            Box::<RateLimiter>::default(),
+        ]);
 
-        let mut rate_limiter = MessageRateLimiter::default();
+        let mut msg_handler_for_err = MessageSendHandler::with_limiters(vec![
+            Box::new(ChangeDetector::<AudioProcessorToNodeMessage>::new(Some(
+                AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good),
+            ))),
+            Box::<RateLimiter>::default(),
+        ]);
 
         let addr = self.node_addr.clone();
         let addr_for_err = self.node_addr.clone();
@@ -354,7 +360,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         ));
 
                         if let Some(addr) = addr.as_ref() {
-                            change_notifier.send_msg(msg, addr);
+                            msg_handler.send_msg(msg, addr);
                         }
                     }
                     AudioStreamState::Playing => {
@@ -365,7 +371,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                             AudioProcessorToNodeMessage::AudioStateInfo(processor.info.clone());
 
                         if let Some(addr) = addr.as_ref() {
-                            rate_limiter.send_msg(msg, addr);
+                            msg_handler.send_msg(msg, addr);
                         }
                     }
                 },
@@ -377,7 +383,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                     ));
 
                     if let Some(addr) = addr.as_ref() {
-                        change_notifier.send_msg(msg, addr);
+                        msg_handler.send_msg(msg, addr);
                     }
                 }
             },
@@ -396,7 +402,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                 };
 
                 if let Some(addr) = addr_for_err.as_ref() {
-                    change_notifier_for_err.send_msg(msg, addr);
+                    msg_handler_for_err.send_msg(msg, addr);
                 }
             },
             None,
