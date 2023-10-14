@@ -364,9 +364,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         }
                     }
                     AudioStreamState::Playing => {
-                        // TODO: send less unneeded info
-                        // e.g. only send paused once not every tick
-
                         let msg =
                             AudioProcessorToNodeMessage::AudioStateInfo(processor.info.clone());
 
