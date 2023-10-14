@@ -1,4 +1,8 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    fs,
+    time::{Duration, Instant},
+};
 
 use actix::{dev::ToEnvelope, Actor, Addr, Handler, Message};
 use anyhow::anyhow;
@@ -6,6 +10,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
     Device, SampleRate, StreamConfig,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     brain::brain_server::{AudioBrain, GetAudioNodeMessage},
@@ -109,6 +114,25 @@ pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)>
 
 pub fn type_as_str<'a, T: Sized>(_v: &T) -> &'a str {
     std::any::type_name::<T>()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioSourceInfo {
+    pub human_readable_name: String,
+}
+
+pub type Sources = HashMap<String, AudioSourceInfo>;
+
+pub fn get_audio_sources() -> Sources {
+    let source_str = if cfg!(not(debug_assertions)) {
+        fs::read_to_string("sources-prod.toml")
+            .expect("'sources-prod.toml' should exist in production env")
+    } else {
+        fs::read_to_string("sources-dev.toml")
+            .expect("'sources-dev.toml' should exist in development env")
+    };
+
+    toml::from_str(&source_str).expect("sources file should be valid toml")
 }
 
 #[cfg(test)]

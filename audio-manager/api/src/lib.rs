@@ -16,9 +16,6 @@ pub mod tests_utils;
 
 pub static AUDIO_DIR: &str = "audio";
 
-pub static AUDIO_SOURCES: [(&str, &str); 2] =
-    [("Living Room", "living_room"), ("Office", "office")];
-
 pub struct AppData {
     pub brain_addr: Addr<AudioBrain>,
 }

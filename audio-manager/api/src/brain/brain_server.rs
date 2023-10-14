@@ -9,8 +9,7 @@ use crate::{
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     streams::brain_streams::AudioBrainInfoStreamMessage,
-    utils::type_as_str,
-    AUDIO_SOURCES,
+    utils::{get_audio_sources, type_as_str},
 };
 
 use super::brain_session::AudioBrainSession;
@@ -80,7 +79,7 @@ impl Actor for AudioBrain {
         ctx.set_mailbox_capacity(64);
         log::info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
-        for (human_readable_name, source_name) in AUDIO_SOURCES {
+        for (source_name, info) in get_audio_sources().into_iter() {
             if let Ok(player) = AudioPlayer::try_new(source_name.to_owned(), None) {
                 let node = AudioNode::new(
                     source_name.to_owned(),
@@ -96,7 +95,7 @@ impl Actor for AudioBrain {
                         node_addr,
                         AudioNodeInfo {
                             source_name: source_name.to_owned(),
-                            human_readable_name: human_readable_name.to_owned(),
+                            human_readable_name: info.human_readable_name.clone(),
                             health: AudioNodeHealth::Good,
                         },
                     ),

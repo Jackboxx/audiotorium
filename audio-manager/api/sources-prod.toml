@@ -1,0 +1,5 @@
+[living_room]
+human_readable_name = "Living Room"
+
+[office]
+human_readable_name = "Office"
