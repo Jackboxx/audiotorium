@@ -1,2 +1,11 @@
 [default]
 human_readable_name = "test source"
+
+[dummy_0]
+human_readable_name = "dummy 0"
+
+[dummy_1]
+human_readable_name = "dummy 1"
+
+[dummy_2]
+human_readable_name = "dummy 2"
