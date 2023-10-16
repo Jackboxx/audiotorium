@@ -3,8 +3,13 @@
 ./fake-alsa/target/release/fake-alsa conf-cava -a 4 -o "./fake-alsa/cava"
 
 parallel "./api-cli/target/release/audio-manager-api-cli send node -s dummy_out_{} add-queue-item -n 'the pretender' -u 'https://www.youtube.com/watch?v=SBjQ9tuuTJQ'" ::: {0..3} && \
+parallel "./api-cli/target/release/audio-manager-api-cli send node -s dummy_out_{} add-queue-item -n 'sweater weather' -u 'https://www.youtube.com/watch?v=KGxEtXi90KA'" ::: {0..3} && \
     ./tile-tmux \
+        './api-cli/target/release/audio-manager-api-cli listen node -s dummy_out_0 -w audio-state-info' \
+        './api-cli/target/release/audio-manager-api-cli listen node -s dummy_out_1 -w audio-state-info' \
+        './api-cli/target/release/audio-manager-api-cli listen node -s dummy_out_2 -w audio-state-info' \
+        './api-cli/target/release/audio-manager-api-cli listen node -s dummy_out_3 -w audio-state-info' \
         'cava -p ./fake-alsa/cava/config_0'  \
         'cava -p ./fake-alsa/cava/config_1'  \
         'cava -p ./fake-alsa/cava/config_2'  \
-        'cava -p ./fake-alsa/cava/config_3'  \
+        'cava -p ./fake-alsa/cava/config_3'
