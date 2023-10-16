@@ -1,2 +1,0 @@
-#!/bin/sh
-parallel "cargo run -- send node -s dummy_out_{} add-queue-item -n 'the pretender' -u 'https://www.youtube.com/watch?v=SBjQ9tuuTJQ'" ::: {0..7}
