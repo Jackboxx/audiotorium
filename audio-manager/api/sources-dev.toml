@@ -1,11 +1,26 @@
 [default]
 human_readable_name = "test source"
 
-[dummy_0]
+[dummy_out_0]
 human_readable_name = "dummy 0"
 
-[dummy_1]
+[dummy_out_1]
 human_readable_name = "dummy 1"
 
-[dummy_2]
+[dummy_out_2]
 human_readable_name = "dummy 2"
+
+[dummy_out_3]
+human_readable_name = "dummy 3"
+
+[dummy_out_4]
+human_readable_name = "dummy 4"
+
+[dummy_out_5]
+human_readable_name = "dummy 5"
+
+[dummy_out_6]
+human_readable_name = "dummy 6"
+
+[dummy_out_7]
+human_readable_name = "dummy 7"
