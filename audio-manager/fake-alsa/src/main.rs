@@ -1,12 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    Device, SampleRate,
-};
-
-const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -31,12 +25,6 @@ pub enum Action {
         amount: usize,
         #[arg(short, long)]
         out_dir: Option<PathBuf>,
-    },
-    #[command(about = "Watch dummy device")]
-    Watch {
-        /// Dummy device to listen to
-        #[arg(short, long)]
-        index: usize,
     },
 }
 
@@ -67,40 +55,7 @@ fn main() {
                     fs::write(path, conf).unwrap();
                 });
         }
-        Action::Watch { index } => {
-            let index = index.clamp(0, 7);
-            let device = get_dummy_device(index);
-            let mut supported_configs_range = device.supported_output_configs().unwrap();
-            let config = supported_configs_range
-                .next()
-                .unwrap()
-                .with_sample_rate(SampleRate(DEFAULT_SAMPLE_RATE));
-
-            let stream = device
-                .build_input_stream(
-                    &config.into(),
-                    move |_data: &[f32], _info| {},
-                    |err| eprintln!("{err}"),
-                    None,
-                )
-                .unwrap();
-
-            stream.play().unwrap();
-            loop {}
-        }
     }
-}
-
-fn get_dummy_device(index: usize) -> Device {
-    let host = cpal::default_host();
-    host.output_devices()
-        .unwrap()
-        .find(|dev| {
-            dev.name()
-                .map(|v| v == format!("dummy_in_{index}"))
-                .unwrap_or(false)
-        })
-        .unwrap()
 }
 
 fn gen_cava_conf(index: usize) -> String {
