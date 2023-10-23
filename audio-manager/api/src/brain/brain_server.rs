@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::{
     audio::audio_player::AudioPlayer,
     downloader::AudioDownloader,
-    node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
+    node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo, SourceName},
     streams::brain_streams::AudioBrainInfoStreamMessage,
     utils::{get_audio_sources, log_msg_received},
 };
@@ -16,7 +16,7 @@ use super::brain_session::AudioBrainSession;
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
-    nodes: HashMap<String, (Addr<AudioNode>, AudioNodeInfo)>,
+    nodes: HashMap<SourceName, (Addr<AudioNode>, AudioNodeInfo)>,
     sessions: HashMap<usize, Addr<AudioBrainSession>>,
 }
 
