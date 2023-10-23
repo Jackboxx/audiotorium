@@ -227,29 +227,6 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     }
 }
 
-impl Handler<TryRecoverDevice> for AudioNode {
-    type Result = ();
-
-    fn handle(&mut self, _msg: TryRecoverDevice, ctx: &mut Self::Context) -> Self::Result {
-        match self.health {
-            AudioNodeHealth::Good => {}
-            _ => {
-                let device_health_restored =
-                    self.player.try_recover_device(self.current_audio_progress);
-                if !device_health_restored {
-                    thread::sleep(Duration::from_secs(10));
-
-                    if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
-                        log::error!("failed to resend 'try device revocer' message\nERROR: {err}");
-                    }
-                } else {
-                    log::info!("recovered device health for {}", self.source_name);
-                }
-            }
-        }
-    }
-}
-
 impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
@@ -396,6 +373,37 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
                 self.multicast(msg);
             }
         }
+    }
+}
+
+impl Handler<TryRecoverDevice> for AudioNode {
+    type Result = ();
+
+    fn handle(&mut self, _msg: TryRecoverDevice, ctx: &mut Self::Context) -> Self::Result {
+        match self.health {
+            AudioNodeHealth::Good => {}
+            _ => {
+                let device_health_restored =
+                    self.player.try_recover_device(self.current_audio_progress);
+                if !device_health_restored {
+                    thread::sleep(Duration::from_secs(10));
+
+                    if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
+                        log::error!("failed to resend 'try device revocer' message\nERROR: {err}");
+                    };
+                } else {
+                    if let Err(err) = ctx
+                        .address()
+                        .try_send(AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good))
+                    {
+                        log::error!(
+                            "failed to inform node with source name {} of recovery\nERROR: {err}",
+                            self.source_name
+                        )
+                    };
+                }
+            }
+        };
     }
 }
 
