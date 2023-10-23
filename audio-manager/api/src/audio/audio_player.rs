@@ -32,6 +32,7 @@ pub struct AudioPlayer<ADL: AudioDataLocator> {
     node_addr: Option<Addr<AudioNode>>,
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
+    current_volume: f32,
     loop_start_end: Option<(usize, usize)>,
 }
 
@@ -85,10 +86,10 @@ pub enum AudioProcessorMessage {
     SetProgress(f64),
 }
 
-impl Default for ProcessorInfo {
-    fn default() -> Self {
+impl ProcessorInfo {
+    fn new(volume: f32) -> Self {
         Self {
-            audio_volume: 1.0,
+            audio_volume: volume,
             audio_progress: Default::default(),
             playback_state: Default::default(),
         }
@@ -109,6 +110,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             current_stream: None,
             processor_msg_buffer: None,
             node_addr,
+            current_volume: 1.0,
             queue_head: 0,
             loop_start_end: None,
         })
@@ -232,6 +234,8 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
     pub fn set_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
+        self.current_volume = volume;
+
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
             let _ = buffer.push(AudioProcessorMessage::SetVolume(volume));
         }
@@ -333,7 +337,8 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(1);
         self.processor_msg_buffer = Some(producer);
 
-        let mut processor = AudioProcessor::new(consumer, Some(read_disk_stream));
+        let mut processor =
+            AudioProcessor::new(consumer, Some(read_disk_stream), self.current_volume);
 
         let mut msg_handler = MessageSendHandler::with_limiters(vec![
             Box::new(ChangeDetector::<AudioProcessorToNodeMessage>::new(Some(
@@ -426,12 +431,13 @@ impl AudioProcessor {
     fn new(
         msg_buffer: Consumer<AudioProcessorMessage>,
         read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+        volume: f32,
     ) -> Self {
         Self {
             msg_buffer,
             read_disk_stream,
             had_cache_miss_last_cycle: false,
-            info: ProcessorInfo::default(),
+            info: ProcessorInfo::new(volume),
         }
     }
 
