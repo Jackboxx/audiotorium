@@ -322,7 +322,12 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
         msg: AudioProcessorToNodeMessage,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        log_msg_received(&self, &msg);
+        match msg {
+            AudioProcessorToNodeMessage::AudioStateInfo(_) => {}
+            _ => {
+                log_msg_received(&self, &msg);
+            }
+        }
 
         match msg {
             AudioProcessorToNodeMessage::Health(health) => {
