@@ -102,19 +102,15 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         })
     }
 
-    pub fn try_recover_device(&mut self, current_progress: f64) -> bool {
-        let (device, config) = match setup_device(&self.source_name) {
-            Ok(res) => res,
-            Err(_) => return false,
-        };
-
+    pub fn try_recover_device(&mut self, current_progress: f64) -> anyhow::Result<()> {
+        let (device, config) = setup_device(&self.source_name)?;
         self.device = device;
         self.config = config;
 
-        let _ = self.play_selected(self.queue_head);
+        self.play_selected(self.queue_head, true)?;
         self.set_stream_progress(current_progress);
 
-        true
+        Ok(())
     }
 
     pub fn play_next(&mut self) -> anyhow::Result<()> {
@@ -171,13 +167,13 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         Ok(())
     }
 
-    pub fn play_selected(&mut self, index: usize) -> anyhow::Result<()> {
+    pub fn play_selected(&mut self, index: usize, allow_self_select: bool) -> anyhow::Result<()> {
         if self.queue.is_empty() {
             self.current_stream = None;
             return Ok(());
         }
 
-        if index == self.queue_head {
+        if index == self.queue_head && !allow_self_select {
             return Ok(());
         }
 

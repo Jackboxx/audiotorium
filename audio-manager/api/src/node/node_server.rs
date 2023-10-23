@@ -306,7 +306,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
                 log::info!("'PlaySelected' handler received a message, MESSAGE: {msg:?}");
 
                 self.player
-                    .play_selected(params.index)
+                    .play_selected(params.index, false)
                     .map_err(|err| ErrorResponse {
                         error: err.to_string(),
                     })?;
@@ -384,7 +384,16 @@ impl Handler<TryRecoverDevice> for AudioNode {
             AudioNodeHealth::Good => {}
             _ => {
                 let device_health_restored =
-                    self.player.try_recover_device(self.current_audio_progress);
+                    if let Err(err) = self.player.try_recover_device(self.current_audio_progress) {
+                        log::error!(
+                            "failed to recover device for node with source name {}\nERROR: {err}",
+                            self.source_name
+                        );
+                        false
+                    } else {
+                        true
+                    };
+
                 if !device_health_restored {
                     thread::sleep(Duration::from_secs(10));
 
