@@ -17,6 +17,8 @@ use crate::{
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    thread,
+    time::Duration,
 };
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
@@ -24,8 +26,10 @@ use serde::Serialize;
 
 use super::node_session::AudioNodeSession;
 
+pub type SourceName = String;
+
 pub struct AudioNode {
-    source_name: String,
+    source_name: SourceName,
     current_audio_progress: f64,
     player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
@@ -118,6 +122,10 @@ pub struct FinishedDownloadingAudioNodeResponse {
     error: Option<String>,
     queue: Option<Vec<AudioMetaData>>,
 }
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct TryRecoverDevice;
 
 impl AudioNode {
     pub fn new(
@@ -214,6 +222,29 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                 });
 
                 self.multicast(msg);
+            }
+        }
+    }
+}
+
+impl Handler<TryRecoverDevice> for AudioNode {
+    type Result = ();
+
+    fn handle(&mut self, _msg: TryRecoverDevice, ctx: &mut Self::Context) -> Self::Result {
+        match self.health {
+            AudioNodeHealth::Good => {}
+            _ => {
+                let device_health_restored =
+                    self.player.try_recover_device(self.current_audio_progress);
+                if !device_health_restored {
+                    thread::sleep(Duration::from_secs(10));
+
+                    if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
+                        log::error!("failed to resend 'try device revocer' message\nERROR: {err}");
+                    }
+                } else {
+                    log::info!("recovered device health for {}", self.source_name);
+                }
             }
         }
     }
@@ -320,7 +351,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
     fn handle(
         &mut self,
         msg: AudioProcessorToNodeMessage,
-        _ctx: &mut Self::Context,
+        ctx: &mut Self::Context,
     ) -> Self::Result {
         match msg {
             AudioProcessorToNodeMessage::AudioStateInfo(_) => {}
@@ -331,43 +362,26 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
 
         match msg {
             AudioProcessorToNodeMessage::Health(health) => {
-                let health_update = match (&self.health, &health) {
-                    (AudioNodeHealth::Good, AudioNodeHealth::Poor(_)) => {
-                        let device_health_restored =
-                            self.player.try_recover_device(self.current_audio_progress);
-                        if !device_health_restored {
-                            Some(health)
-                        } else {
-                            log::info!("recovered device health for {}", self.source_name);
-                            None
+                self.health = health.clone();
+
+                self.server_addr
+                    .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
+                        self.source_name.to_owned(),
+                        health.clone(),
+                    )));
+
+                self.multicast(AudioNodeInfoStreamMessage::Health(health));
+
+                match self.health {
+                    AudioNodeHealth::Good => {}
+                    _ => {
+                        if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
+                            log::error!(
+                                "failed to send initial 'try device revocer' message\nERROR: {err}"
+                            );
                         }
                     }
-                    (
-                        AudioNodeHealth::Mild(_) | AudioNodeHealth::Poor(_),
-                        AudioNodeHealth::Poor(_),
-                    ) => {
-                        let device_health_restored =
-                            self.player.try_recover_device(self.current_audio_progress);
-                        if device_health_restored {
-                            Some(AudioNodeHealth::Good)
-                        } else {
-                            Some(health)
-                        }
-                    }
-                    _ => Some(health),
                 };
-
-                if let Some(health) = health_update {
-                    self.health = health.clone();
-
-                    self.server_addr
-                        .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
-                            self.source_name.to_owned(),
-                            health.clone(),
-                        )));
-
-                    self.multicast(AudioNodeInfoStreamMessage::Health(health));
-                }
             }
             AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
                 self.current_audio_progress = processor_info.audio_progress;
