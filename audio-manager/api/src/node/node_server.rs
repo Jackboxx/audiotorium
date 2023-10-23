@@ -26,6 +26,8 @@ use serde::Serialize;
 
 use super::node_session::AudioNodeSession;
 
+const DEVICE_RECOVERY_ATTEMPT_INTERVAL: Duration = Duration::from_secs(5);
+
 pub type SourceName = String;
 
 pub struct AudioNode {
@@ -395,7 +397,7 @@ impl Handler<TryRecoverDevice> for AudioNode {
                     };
 
                 if !device_health_restored {
-                    thread::sleep(Duration::from_secs(10));
+                    thread::sleep(DEVICE_RECOVERY_ATTEMPT_INTERVAL);
 
                     if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
                         log::error!("failed to resend 'try device revocer' message\nERROR: {err}");
