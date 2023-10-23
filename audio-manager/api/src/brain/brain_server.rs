@@ -9,7 +9,7 @@ use crate::{
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo},
     streams::brain_streams::AudioBrainInfoStreamMessage,
-    utils::{get_audio_sources, type_as_str},
+    utils::{get_audio_sources, log_msg_received},
 };
 
 use super::brain_session::AudioBrainSession;
@@ -109,11 +109,7 @@ impl Handler<BrainConnect> for AudioBrain {
     type Result = BrainConnectResponse;
 
     fn handle(&mut self, msg: BrainConnect, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         let BrainConnect { addr } = msg;
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
@@ -134,11 +130,7 @@ impl Handler<BrainConnect> for AudioBrain {
 impl Handler<BrainDisconnect> for AudioBrain {
     type Result = ();
     fn handle(&mut self, msg: BrainDisconnect, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         let BrainDisconnect { id } = msg;
         self.sessions.remove(&id);
@@ -149,11 +141,7 @@ impl Handler<AudioNodeToBrainMessage> for AudioBrain {
     type Result = ();
 
     fn handle(&mut self, msg: AudioNodeToBrainMessage, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         match &msg {
             AudioNodeToBrainMessage::NodeHealthUpdate(params) => {
@@ -180,11 +168,7 @@ impl Handler<GetAudioNodeMessage> for AudioBrain {
     type Result = Option<Addr<AudioNode>>;
 
     fn handle(&mut self, msg: GetAudioNodeMessage, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         self.nodes
             .get(&msg.source_name)

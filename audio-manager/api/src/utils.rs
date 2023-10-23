@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fmt::Debug, fs};
 
 use actix::Addr;
 use anyhow::anyhow;
@@ -45,7 +45,15 @@ pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)>
     Ok((device, config))
 }
 
-pub fn type_as_str<'a, T: Sized>(_v: &T) -> &'a str {
+pub fn log_msg_received<T, M: Debug>(handler: &T, msg: &M) {
+    log::info!(
+        "'{}' received message '{}'\ncontent: '{msg:?}'",
+        type_as_str(handler),
+        type_as_str(msg)
+    );
+}
+
+fn type_as_str<'a, T: Sized>(_v: &T) -> &'a str {
     std::any::type_name::<T>()
 }
 

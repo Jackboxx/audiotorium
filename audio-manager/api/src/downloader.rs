@@ -1,6 +1,6 @@
 use crate::{
     audio::audio_item::{AudioMetaData, AudioPlayerQueueItem},
-    utils::type_as_str,
+    utils::log_msg_received,
     ErrorResponse,
 };
 use std::{path::PathBuf, process::Command};
@@ -43,11 +43,7 @@ impl Handler<DownloadAudio> for AudioDownloader {
     type Result = ();
 
     fn handle(&mut self, msg: DownloadAudio, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         let DownloadAudio { addr, path, url } = msg;
 

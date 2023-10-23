@@ -11,7 +11,7 @@ use crate::{
     },
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
     streams::node_streams::{AudioNodeInfoStreamMessage, AudioStateInfo, DownloadInfo},
-    utils::type_as_str,
+    utils::log_msg_received,
     ErrorResponse, AUDIO_DIR,
 };
 use std::{
@@ -163,11 +163,7 @@ impl Handler<NodeConnectMessage> for AudioNode {
     type Result = NodeConnectResponse;
 
     fn handle(&mut self, msg: NodeConnectMessage, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
         self.sessions.insert(id, msg.addr);
@@ -182,11 +178,7 @@ impl Handler<NodeDisconnectMessage> for AudioNode {
     type Result = ();
 
     fn handle(&mut self, msg: NodeDisconnectMessage, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         self.sessions.remove(&msg.id);
     }
@@ -196,11 +188,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     type Result = ();
 
     fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         match msg.result {
             Ok(resp) => {
@@ -235,11 +223,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
     fn handle(&mut self, msg: AudioNodeCommand, ctx: &mut Self::Context) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         match &msg {
             AudioNodeCommand::AddQueueItem(params) => {
@@ -338,11 +322,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
         msg: AudioProcessorToNodeMessage,
         _ctx: &mut Self::Context,
     ) -> Self::Result {
-        log::info!(
-            "{} received message {}\ncontent: {msg:?}",
-            type_as_str(&self),
-            type_as_str(&msg)
-        );
+        log_msg_received(&self, &msg);
 
         match msg {
             AudioProcessorToNodeMessage::Health(health) => {
