@@ -269,6 +269,12 @@ impl Handler<AudioNodeCommand> for AudioNode {
 
                 Ok(())
             }
+            AudioNodeCommand::SetAudioVolume(params) => {
+                log::info!("'SetAudioVolume' handler received a message, MESSAGE: {msg:?}");
+
+                self.player.set_volume(params.volume);
+                Ok(())
+            }
             AudioNodeCommand::SetAudioProgress(params) => {
                 log::info!("'SetAudioProgress' handler received a message, MESSAGE: {msg:?}");
 
@@ -381,6 +387,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
 impl Handler<TryRecoverDevice> for AudioNode {
     type Result = ();
 
+    #[allow(clippy::collapsible_else_if)]
     fn handle(&mut self, _msg: TryRecoverDevice, ctx: &mut Self::Context) -> Self::Result {
         match self.health {
             AudioNodeHealth::Good => {}

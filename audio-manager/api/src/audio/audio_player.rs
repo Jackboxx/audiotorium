@@ -48,11 +48,12 @@ pub struct PlaybackInfo {
     pub current_head_index: usize,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessorInfo {
     pub playback_state: PlaybackState,
     pub audio_progress: f64,
+    pub audio_volume: f32,
 }
 
 #[derive(Debug)]
@@ -79,8 +80,19 @@ pub struct LoopBounds {
 
 #[derive(Debug, Clone)]
 pub enum AudioProcessorMessage {
+    SetVolume(f32),
     SetState(PlaybackState),
     SetProgress(f64),
+}
+
+impl Default for ProcessorInfo {
+    fn default() -> Self {
+        Self {
+            audio_volume: 1.0,
+            audio_progress: Default::default(),
+            playback_state: Default::default(),
+        }
+    }
 }
 
 impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
@@ -194,9 +206,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
     pub fn set_stream_playback_state(&mut self, state: PlaybackState) {
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
-            buffer
-                .push(AudioProcessorMessage::SetState(state))
-                .unwrap_or(());
+            let _ = buffer.push(AudioProcessorMessage::SetState(state));
         }
     }
 
@@ -204,9 +214,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
     pub fn set_stream_progress(&mut self, progress: f64) {
         let progress = progress.clamp(0.0, 1.0);
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
-            buffer
-                .push(AudioProcessorMessage::SetProgress(progress))
-                .unwrap_or(());
+            let _ = buffer.push(AudioProcessorMessage::SetProgress(progress));
         }
     }
 
@@ -220,6 +228,13 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                 end.clamp(0, self.queue.len()),
             )
         });
+    }
+
+    pub fn set_volume(&mut self, volume: f32) {
+        let volume = volume.clamp(0.0, 1.0);
+        if let Some(buffer) = self.processor_msg_buffer.as_mut() {
+            let _ = buffer.push(AudioProcessorMessage::SetVolume(volume));
+        }
     }
 
     pub fn get_locator(&self) -> Option<ADL> {
@@ -429,6 +444,7 @@ impl AudioProcessor {
 
         while let Ok(msg) = self.msg_buffer.pop() {
             match msg {
+                AudioProcessorMessage::SetVolume(volume) => self.info.audio_volume = volume,
                 AudioProcessorMessage::SetState(state) => self.info.playback_state = state,
                 AudioProcessorMessage::SetProgress(percentage) => {
                     if let Some(read_disk_stream) = &mut self.read_disk_stream {
@@ -460,6 +476,8 @@ impl AudioProcessor {
             let num_frames = read_disk_stream.info().num_frames;
             let num_channels = usize::from(read_disk_stream.info().num_channels);
 
+            let vol = self.info.audio_volume;
+
             while data.len() >= num_channels {
                 let read_frames = data.len() / 2;
                 let mut playhead = read_disk_stream.playhead();
@@ -474,20 +492,21 @@ impl AudioProcessor {
                         let ch = read_data.read_channel(0);
 
                         for i in 0..to_end_of_loop {
-                            data[i * 2] = ch[i];
-                            data[(i * 2) + 1] = ch[i];
+                            data[i * 2] = ch[i] * vol;
+                            data[(i * 2) + 1] = ch[i] * vol;
                         }
                     } else if read_data.num_channels() == 2 {
                         let ch1 = read_data.read_channel(0);
                         let ch2 = read_data.read_channel(1);
 
                         for i in 0..to_end_of_loop {
-                            data[i * 2] = ch1[i];
-                            data[(i * 2) + 1] = ch2[i];
+                            data[i * 2] = ch1[i] * vol;
+                            data[(i * 2) + 1] = ch2[i] * vol;
                         }
                     }
 
                     data = &mut data[to_end_of_loop * 2..];
+
                     stream_state = AudioStreamState::Finished;
                     break;
                 } else {
@@ -495,20 +514,21 @@ impl AudioProcessor {
                         let ch = read_data.read_channel(0);
 
                         for i in 0..read_data.num_frames() {
-                            data[i * 2] = ch[i];
-                            data[(i * 2) + 1] = ch[i];
+                            data[i * 2] = ch[i] * vol;
+                            data[(i * 2) + 1] = ch[i] * vol;
                         }
                     } else if read_data.num_channels() == 2 {
                         let ch1 = read_data.read_channel(0);
                         let ch2 = read_data.read_channel(1);
 
                         for i in 0..read_data.num_frames() {
-                            data[i * 2] = ch1[i];
-                            data[(i * 2) + 1] = ch2[i];
+                            data[i * 2] = ch1[i] * vol;
+                            data[(i * 2) + 1] = ch2[i] * vol;
                         }
                     }
 
                     data = &mut data[read_data.num_frames() * 2..];
+
                     stream_state = AudioStreamState::Playing;
                 }
 

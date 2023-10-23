@@ -28,6 +28,7 @@ pub enum AudioNodeCommand {
     AddQueueItem(AddQueueItemParams),
     RemoveQueueItem(RemoveQueueItemParams),
     MoveQueueItem(MoveQueueItemParams),
+    SetAudioVolume(SetAudioVolumeParams),
     SetAudioProgress(SetAudioProgressParams),
     PauseQueue,
     UnPauseQueue,
@@ -61,6 +62,12 @@ pub struct PlaySelectedParams {
 pub struct MoveQueueItemParams {
     pub old_pos: usize,
     pub new_pos: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAudioVolumeParams {
+    pub volume: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

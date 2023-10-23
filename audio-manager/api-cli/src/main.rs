@@ -7,7 +7,7 @@ use audio_manager_api::{
     audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, LoopQueueParams, MoveQueueItemParams,
-        PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
+        PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams, SetAudioVolumeParams,
     },
     streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
@@ -96,6 +96,10 @@ pub enum CliNodeCommand {
         old_pos: usize,
         #[arg(short, long)]
         new_pos: usize,
+    },
+    SetAudioVolume {
+        #[arg(short, long)]
+        volume: f32,
     },
     SetAudioProgress {
         #[arg(short, long)]
@@ -194,6 +198,9 @@ impl From<CliNodeCommand> for AudioNodeCommand {
             }
             CliNodeCommand::MoveQueueItem { old_pos, new_pos } => {
                 AudioNodeCommand::MoveQueueItem(MoveQueueItemParams { old_pos, new_pos })
+            }
+            CliNodeCommand::SetAudioVolume { volume } => {
+                AudioNodeCommand::SetAudioVolume(SetAudioVolumeParams { volume })
             }
             CliNodeCommand::SetAudioProgress { progress } => {
                 AudioNodeCommand::SetAudioProgress(SetAudioProgressParams { progress })
