@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-use super::node_server::AudioNode;
+use super::node_server::{AudioNode, AudioNodeHealth};
 
 pub struct AudioNodeSession {
     id: usize,
@@ -26,7 +26,10 @@ pub struct AudioNodeSession {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum NodeSessionWsResponse {
-    SessionConnectedResponse(SerializableQueue),
+    SessionConnectedResponse {
+        queue: Option<SerializableQueue>,
+        health: Option<AudioNodeHealth>,
+    },
 }
 
 impl AudioNodeSession {
@@ -47,7 +50,10 @@ impl Actor for AudioNodeSession {
 
         let addr = ctx.address();
         self.node_addr
-            .send(NodeConnectMessage { addr })
+            .send(NodeConnectMessage {
+                addr,
+                wanted_info: self.wanted_info.clone(),
+            })
             .into_actor(self)
             .then(|res, act, ctx| {
                 match res {
@@ -56,10 +62,8 @@ impl Actor for AudioNodeSession {
                         act.id = res.id;
 
                         ctx.text(
-                            serde_json::to_string(
-                                &NodeSessionWsResponse::SessionConnectedResponse(res.queue),
-                            )
-                            .unwrap_or("[]".to_owned()),
+                            serde_json::to_string(&res.connection_response)
+                                .unwrap_or("[]".to_owned()),
                         );
                     }
 

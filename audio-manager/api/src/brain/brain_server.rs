@@ -8,11 +8,11 @@ use crate::{
     audio::audio_player::AudioPlayer,
     downloader::AudioDownloader,
     node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo, SourceName},
-    streams::brain_streams::AudioBrainInfoStreamMessage,
+    streams::brain_streams::{AudioBrainInfoStreamMessage, AudioBrainInfoStreamType},
     utils::{get_audio_sources, log_msg_received},
 };
 
-use super::brain_session::AudioBrainSession;
+use super::brain_session::{AudioBrainSession, BrainSessionWsResponse};
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
@@ -34,14 +34,15 @@ pub enum AudioNodeToBrainMessage {
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "BrainConnectResponse")]
-pub struct BrainConnect {
+pub struct BrainConnectMessage {
     pub addr: Addr<AudioBrainSession>,
+    pub wanted_info: Vec<AudioBrainInfoStreamType>,
 }
 
 #[derive(Debug, Clone, Serialize, MessageResponse)]
 pub struct BrainConnectResponse {
     pub id: usize,
-    pub sources: Vec<AudioNodeInfo>,
+    pub connection_response: BrainSessionWsResponse,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -105,24 +106,33 @@ impl Actor for AudioBrain {
     }
 }
 
-impl Handler<BrainConnect> for AudioBrain {
+impl Handler<BrainConnectMessage> for AudioBrain {
     type Result = BrainConnectResponse;
 
-    fn handle(&mut self, msg: BrainConnect, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: BrainConnectMessage, _ctx: &mut Self::Context) -> Self::Result {
         log_msg_received(&self, &msg);
 
-        let BrainConnect { addr } = msg;
+        let BrainConnectMessage { addr, wanted_info } = msg;
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
 
         self.sessions.insert(id, addr);
 
+        let connection_response = if wanted_info.contains(&AudioBrainInfoStreamType::NodeInfo) {
+            BrainSessionWsResponse::SessionConnectedResponse {
+                node_info: Some(
+                    self.nodes
+                        .values()
+                        .map(|(_, info)| info.to_owned())
+                        .collect(),
+                ),
+            }
+        } else {
+            BrainSessionWsResponse::SessionConnectedResponse { node_info: None }
+        };
+
         BrainConnectResponse {
             id,
-            sources: self
-                .nodes
-                .values()
-                .map(|(_, info)| info.to_owned())
-                .collect(),
+            connection_response,
         }
     }
 }

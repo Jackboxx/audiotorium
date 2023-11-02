@@ -4,9 +4,11 @@ use actix::{
 };
 
 use actix_web_actors::ws;
+use serde::Serialize;
 
 use crate::{
-    brain::brain_server::{BrainConnect, BrainDisconnect},
+    brain::brain_server::{BrainConnectMessage, BrainDisconnect},
+    node::node_server::AudioNodeInfo,
     streams::brain_streams::{
         get_type_of_stream_data, AudioBrainInfoStreamMessage, AudioBrainInfoStreamType,
     },
@@ -19,6 +21,14 @@ pub struct AudioBrainSession {
     id: usize,
     server_addr: Addr<AudioBrain>,
     wanted_info: Vec<AudioBrainInfoStreamType>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BrainSessionWsResponse {
+    SessionConnectedResponse {
+        node_info: Option<Vec<AudioNodeInfo>>,
+    },
 }
 
 impl AudioBrainSession {
@@ -39,13 +49,21 @@ impl Actor for AudioBrainSession {
 
         let addr = ctx.address();
         self.server_addr
-            .send(BrainConnect { addr })
+            .send(BrainConnectMessage {
+                addr,
+                wanted_info: self.wanted_info.clone(),
+            })
             .into_actor(self)
             .then(|res, act, ctx| {
                 match res {
-                    Ok(params) => {
+                    Ok(res) => {
                         log::info!("'AudioBrainSession' connected");
-                        act.id = params.id;
+                        act.id = res.id;
+
+                        ctx.text(
+                            serde_json::to_string(&res.connection_response)
+                                .unwrap_or("[]".to_owned()),
+                        );
                     }
 
                     Err(err) => {

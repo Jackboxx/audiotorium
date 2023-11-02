@@ -10,7 +10,9 @@ use crate::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
     downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
-    streams::node_streams::{AudioNodeInfoStreamMessage, AudioStateInfo, DownloadInfo},
+    streams::node_streams::{
+        AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
+    },
     utils::log_msg_received,
     ErrorResponse, AUDIO_DIR,
 };
@@ -24,7 +26,7 @@ use std::{
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
 use serde::Serialize;
 
-use super::node_session::AudioNodeSession;
+use super::node_session::{AudioNodeSession, NodeSessionWsResponse};
 
 const DEVICE_RECOVERY_ATTEMPT_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -77,6 +79,7 @@ pub enum AudioNodeHealthPoor {
 #[rtype(result = "NodeConnectResponse")]
 pub struct NodeConnectMessage {
     pub addr: Addr<AudioNodeSession>,
+    pub wanted_info: Vec<AudioNodeInfoStreamType>,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -88,7 +91,7 @@ pub struct NodeDisconnectMessage {
 #[derive(Debug, Clone, MessageResponse)]
 pub struct NodeConnectResponse {
     pub id: usize,
-    pub queue: Vec<AudioMetaData>,
+    pub connection_response: NodeSessionWsResponse,
 }
 
 #[allow(clippy::enum_variant_names, dead_code)]
@@ -177,9 +180,23 @@ impl Handler<NodeConnectMessage> for AudioNode {
 
         let id = self.sessions.keys().max().unwrap_or(&0) + 1;
         self.sessions.insert(id, msg.addr);
+
+        let connection_response = NodeSessionWsResponse::SessionConnectedResponse {
+            queue: if msg.wanted_info.contains(&AudioNodeInfoStreamType::Queue) {
+                Some(extract_queue_metadata(self.player.queue()))
+            } else {
+                None
+            },
+            health: if msg.wanted_info.contains(&AudioNodeInfoStreamType::Health) {
+                Some(self.health.clone())
+            } else {
+                None
+            },
+        };
+
         NodeConnectResponse {
             id,
-            queue: extract_queue_metadata(self.player.queue()),
+            connection_response,
         }
     }
 }
