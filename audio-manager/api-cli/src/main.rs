@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use reqwest::Client;
-use std::{fmt::Display, time::Duration};
+use std::fmt::Display;
 use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
@@ -83,8 +83,8 @@ pub enum CliNodeCommand {
         name: String,
         #[arg(short, long)]
         author: Option<String>,
-        #[arg(short, long, value_parser = parse_duration)]
-        duration: Option<Duration>,
+        #[arg(short, long)]
+        duration: Option<u128>,
         #[arg(short, long)]
         thumbnail_url: Option<String>,
     },
@@ -226,11 +226,6 @@ impl From<CliNodeCommand> for AudioNodeCommand {
             }
         }
     }
-}
-
-fn parse_duration(arg: &str) -> Result<Duration, std::num::ParseIntError> {
-    let seconds = arg.parse()?;
-    Ok(std::time::Duration::from_secs(seconds))
 }
 
 fn get_url(action: &Action, addr: String, port: u16) -> String {
