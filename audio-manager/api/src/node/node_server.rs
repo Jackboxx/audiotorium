@@ -1,6 +1,6 @@
 use crate::{
     audio::{
-        audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
+        audio_item::{AudioDataLocator, AudioPlayerQueueItem},
         audio_player::{
             AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue,
         },
@@ -25,6 +25,7 @@ use std::{
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::node_session::{AudioNodeSession, NodeSessionWsResponse};
 
@@ -42,7 +43,8 @@ pub struct AudioNode {
     health: AudioNodeHealth,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct AudioNodeInfo {
     pub source_name: String,
     pub human_readable_name: String,
@@ -56,19 +58,25 @@ pub enum AudioProcessorToNodeMessage {
     Health(AudioNodeHealth),
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum AudioNodeHealth {
     Good,
     Mild(AudioNodeHealthMild),
     Poor(AudioNodeHealthPoor),
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum AudioNodeHealthMild {
     Buffering,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum AudioNodeHealthPoor {
     DeviceNotAvailable,
     AudioStreamReadFailed,
@@ -92,40 +100,6 @@ pub struct NodeDisconnectMessage {
 pub struct NodeConnectResponse {
     pub id: usize,
     pub connection_response: NodeSessionWsResponse,
-}
-
-#[allow(clippy::enum_variant_names, dead_code)]
-#[derive(Debug, Clone, Serialize, Message)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-#[rtype(result = "()")]
-pub enum NodeInternalMessage {
-    SendClientQueueQueueInfo(SendClientQueueInfoNodeResponse),
-    StartedDownloadingAudio,
-    FinishedDownloadingAudio(FinishedDownloadingAudioNodeResponse),
-}
-
-#[derive(Debug, Clone)]
-pub struct SendClientQueueInfoNodeParams {
-    pub processor_info: ProcessorInfo,
-}
-
-#[derive(Debug, Clone)]
-pub struct UpdateNodeHealthParams {
-    pub health: AudioNodeHealth,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendClientQueueInfoNodeResponse {
-    pub playback_info: PlaybackInfo,
-    pub processor_info: ProcessorInfo,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinishedDownloadingAudioNodeResponse {
-    error: Option<String>,
-    queue: Option<Vec<AudioMetaData>>,
 }
 
 #[derive(Debug, Clone, Message)]

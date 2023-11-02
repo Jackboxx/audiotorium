@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse};
 
-use serde::Serialize;
-
 use crate::{
     audio::audio_player::AudioPlayer,
     downloader::AudioDownloader,
@@ -39,7 +37,7 @@ pub struct BrainConnectMessage {
     pub wanted_info: Vec<AudioBrainInfoStreamType>,
 }
 
-#[derive(Debug, Clone, Serialize, MessageResponse)]
+#[derive(Debug, Clone, MessageResponse)]
 pub struct BrainConnectResponse {
     pub id: usize,
     pub connection_response: BrainSessionWsResponse,

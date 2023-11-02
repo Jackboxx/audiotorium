@@ -7,6 +7,7 @@ use cpal::{
 use creek::{read::ReadError, ReadDiskStream, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::{
     commands::node_commands::AudioNodeCommand,
@@ -43,14 +44,16 @@ struct AudioProcessor {
     info: ProcessorInfo,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct PlaybackInfo {
     pub current_head_index: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct ProcessorInfo {
     pub playback_state: PlaybackState,
     pub audio_progress: f64,
@@ -64,16 +67,18 @@ pub enum AudioStreamState {
     Finished,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum PlaybackState {
     #[default]
     Playing,
     Paused,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct LoopBounds {
     pub start: usize,
     pub end: usize,

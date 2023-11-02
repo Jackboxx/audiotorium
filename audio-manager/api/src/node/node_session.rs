@@ -6,6 +6,7 @@ use actix::{
 use actix_web_actors::ws;
 use log::{error, info};
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::{
     audio::audio_player::SerializableQueue,
@@ -23,8 +24,9 @@ pub struct AudioNodeSession {
     wanted_info: Vec<AudioNodeInfoStreamType>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum NodeSessionWsResponse {
     SessionConnectedResponse {
         queue: Option<SerializableQueue>,

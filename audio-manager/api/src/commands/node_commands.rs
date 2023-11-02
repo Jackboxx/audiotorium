@@ -6,6 +6,7 @@ use actix_web::{
     HttpResponse,
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::{
     audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
@@ -21,8 +22,9 @@ use crate::{
 /// { "ADD_QUEUE_ITEM": { "metadata": { "name": "the teacher" }, "url": "https://www.youtube.com/watch?v=6MF6trC529M"} }
 /// "PLAY_NEXT"
 ///
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize, Message)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export, export_to = "../app/src/api-types/")]
 #[rtype(result = "Result<(), ErrorResponse>")]
 pub enum AudioNodeCommand {
     AddQueueItem(AddQueueItemParams),
@@ -38,46 +40,53 @@ pub enum AudioNodeCommand {
     LoopQueue(LoopQueueParams),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct AddQueueItemParams {
     pub metadata: AudioMetaData,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct RemoveQueueItemParams {
     pub index: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct PlaySelectedParams {
     pub index: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct MoveQueueItemParams {
     pub old_pos: usize,
     pub new_pos: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct SetAudioVolumeParams {
     pub volume: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct SetAudioProgressParams {
     pub progress: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct LoopQueueParams {
     pub bounds: Option<LoopBounds>,
 }

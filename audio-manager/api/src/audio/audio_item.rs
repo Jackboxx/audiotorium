@@ -1,13 +1,15 @@
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
 use creek::{OpenError, ReadDiskStream, SymphoniaDecoder};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct AudioMetaData {
     pub name: String,
     pub author: Option<String>,
-    pub duration: Option<Duration>,
+    pub duration: Option<u128>,
     pub thumbnail_url: Option<String>,
 }
 

@@ -5,6 +5,7 @@ use actix::{
 
 use actix_web_actors::ws;
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::{
     brain::brain_server::{BrainConnectMessage, BrainDisconnect},
@@ -23,8 +24,9 @@ pub struct AudioBrainSession {
     wanted_info: Vec<AudioBrainInfoStreamType>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum BrainSessionWsResponse {
     SessionConnectedResponse {
         node_info: Option<Vec<AudioNodeInfo>>,
