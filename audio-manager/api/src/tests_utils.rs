@@ -50,7 +50,6 @@ impl Handler<TestMessage> for TestMessageHandler {
         }
 
         self.msgs_received += 1;
-        dbg!("hi");
     }
 }
 
