@@ -143,7 +143,7 @@
 				role="button"
 				tabindex="0"
 				on:click={onPrev}
-				on:keydown={onPrev}
+				on:keydown={undefined}
 				class="flex h-10 w-10 cursor-pointer items-center justify-center"
 			>
 				<img class="h-9 w-9 select-none" src="/prev.svg" alt="<" />
@@ -152,7 +152,7 @@
 				role="button"
 				tabindex="0"
 				on:click={onPlayPause}
-				on:keydown={onPlayPause}
+				on:keydown={undefined}
 				class="flex h-[52px] w-[52px] cursor-pointer items-center justify-center rounded-full
             bg-neutral-100"
 			>
@@ -170,7 +170,7 @@
 				role="button"
 				tabindex="0"
 				on:click={onNext}
-				on:keydown={onNext}
+				on:keydown={undefined}
 				class="flex h-10 w-10 cursor-pointer items-center justify-center"
 			>
 				<img class="h-9 w-9 select-none" src="/next.svg" alt=">" />

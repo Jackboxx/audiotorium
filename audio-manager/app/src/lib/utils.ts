@@ -7,7 +7,6 @@ export function unixMillisToMinutesString(millis: number): string {
 	const minutes = Math.trunc(total_seconds / 60);
 
 	const str_seconds = seconds < 10 ? `0${seconds}` : `${seconds}`;
-	const str_minutes = minutes < 10 ? `0${minutes}` : `${minutes}`;
 
-	return `${str_minutes}:${str_seconds}`;
+	return `${minutes}:${str_seconds}`;
 }

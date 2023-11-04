@@ -8,6 +8,7 @@
 	import type { AudioNodeHealth } from '$api/AudioNodeHealth';
 	import type { AudioStateInfo } from '$api/AudioStateInfo';
 	import { WS_PREFIX } from '$lib/utils';
+	import AudioQueue from '$lib/queue/AudioQueue.svelte';
 
 	export let data: PageData;
 
@@ -49,15 +50,26 @@
 	});
 </script>
 
-<div class="flex h-full flex-col gap-8 p-4 last:p-0">
-	<span class="text-lg font-bold sm:text-xl 2xl:text-2xl"> {humanReadableName}</span>
-
-	<div class="flex flex-grow flex-col gap-2">
-		{#each queue as audioDataEntry}
-			<div>
-				{audioDataEntry.name}
-			</div>
-		{/each}
+<div class="flex h-full flex-col">
+	<div class="flex min-h-[40px] items-center justify-between px-4">
+		<span class="text-xl font-bold sm:text-2xl 2xl:text-4xl">
+			{humanReadableName}</span
+		>
+		<div
+			role="button"
+			tabindex="0"
+			on:click={() => (window.location.href = '/')}
+			on:keydown={undefined}
+		>
+			<img class="h-8 w-8" src="/home.svg" alt="⌂" />
+		</div>
+	</div>
+	<div class="flex flex-grow flex-col gap-4 overflow-scroll p-4">
+		<AudioQueue
+			{queue}
+			nodeName={data.node}
+			currentHeadIndex={audioStateInfo?.playbackInfo.currentHeadIndex}
+		/>
 	</div>
 
 	<ActiveAudio
