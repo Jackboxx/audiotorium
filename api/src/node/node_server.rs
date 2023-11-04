@@ -9,15 +9,15 @@ use crate::{
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
-    downloader::{AudioDownloader, DownloadAudioRequest, NotifyDownloadFinished},
-    streams::node_streams::{
-        AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
+    downloader::{
+        AudioDownloader, DownloadAudioRequest, DownloadIdentifier, NotifyDownloadFinished,
     },
+    streams::node_streams::{AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo},
     utils::log_msg_received,
     ErrorResponse, AUDIO_DIR,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     thread,
     time::Duration,
@@ -38,6 +38,8 @@ pub struct AudioNode {
     current_audio_progress: f64,
     player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
+    active_downloads: HashSet<DownloadIdentifier>,
+    failed_downloads: HashMap<DownloadIdentifier, ErrorResponse>,
     server_addr: Addr<AudioBrain>,
     sessions: HashMap<usize, Addr<AudioNodeSession>>,
     health: AudioNodeHealth,
@@ -119,6 +121,8 @@ impl AudioNode {
             player,
             downloader_addr,
             server_addr,
+            active_downloads: HashSet::default(),
+            failed_downloads: HashMap::default(),
             sessions: HashMap::default(),
             health: AudioNodeHealth::Good,
         }
@@ -189,30 +193,43 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     type Result = ();
 
     fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
-        log_msg_received(&self, &msg);
-
         match msg.result {
-            Ok(resp) => {
-                if let Err(err) = self.player.push_to_queue(resp.item) {
+            Ok(identifier) => {
+                self.active_downloads.remove(&identifier);
+
+                // TODO: add db to handle metadata storing
+                let item = AudioPlayerQueueItem {
+                    metadata: crate::audio::audio_item::AudioMetaData {
+                        name: String::new(),
+                        author: None,
+                        duration: None,
+                        thumbnail_url: None,
+                    },
+                    locator: identifier.to_path_with_ext(),
+                };
+
+                if let Err(err) = self.player.push_to_queue(item) {
                     log::error!("failed to auto play first song, ERROR: {err}");
                     return;
                 };
 
-                let download_fin_msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
-                    in_progress: false,
-                    error: None,
-                });
+                let download_fin_msg = AudioNodeInfoStreamMessage::Download {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone(),
+                };
                 self.multicast(download_fin_msg);
 
                 let updated_queue_msg =
                     AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(self.player.queue()));
                 self.multicast(updated_queue_msg);
             }
-            Err(err_resp) => {
-                let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
-                    in_progress: false,
-                    error: Some(err_resp.error),
-                });
+            Err((identifier, err_resp)) => {
+                self.active_downloads.remove(&identifier);
+                self.failed_downloads.insert(identifier, err_resp);
+                let msg = AudioNodeInfoStreamMessage::Download {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone(),
+                };
 
                 self.multicast(msg);
             }
@@ -422,30 +439,29 @@ fn handle_add_queue_item(
     params: AddQueueItemParams,
 ) -> Result<SerializableQueue, ErrorResponse> {
     let AddQueueItemParams { metadata, url } = params.clone();
+    let identifier = DownloadIdentifier::YouTube { url };
 
-    let path = Path::new(AUDIO_DIR).join(&metadata.name);
-    let path_with_ext = path.clone().with_extension("mp3");
+    let path = Path::new(AUDIO_DIR)
+        .join(identifier.uid())
+        .with_extension("wav");
 
-    if !path_with_ext.try_exists().unwrap_or(false) {
-        let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
-            in_progress: true,
-            error: None,
-        });
-        node.multicast(msg);
-
-        // TODO:
-        // somehow this does not prevent the mailbox from being blocked even though this should
-        // keep executing and not doing anything
-        // this might be different now???
-
-        node.downloader_addr.do_send(DownloadAudioRequest {
+    if !path.try_exists().unwrap_or(false) {
+        if let Ok(()) = node.downloader_addr.try_send(DownloadAudioRequest {
             addr: node_addr,
-            path,
-            url,
-        })
+            identifier: identifier.clone(),
+        }) {
+            node.active_downloads.insert(identifier);
+
+            let msg = AudioNodeInfoStreamMessage::Download {
+                active: node.active_downloads.clone().into_iter().collect(),
+                failed: node.failed_downloads.clone(),
+            };
+
+            node.multicast(msg);
+        }
     } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
         metadata,
-        locator: path_with_ext,
+        locator: path,
     }) {
         log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
         return Err(ErrorResponse {

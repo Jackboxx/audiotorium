@@ -13,7 +13,7 @@ pub struct AudioMetaData {
     pub thumbnail_url: Option<String>,
 }
 
-pub trait AudioDataLocator {
+pub trait AudioDataLocator: Send {
     fn load_audio_data(&self) -> Result<ReadDiskStream<SymphoniaDecoder>, OpenError>;
 }
 

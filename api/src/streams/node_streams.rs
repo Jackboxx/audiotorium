@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use actix::Message;
 use actix_web::{
     get,
@@ -15,10 +17,11 @@ use crate::{
         audio_item::AudioMetaData,
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
+    downloader::DownloadIdentifier,
     node::{node_server::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
-    AppData,
+    AppData, ErrorResponse,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -39,16 +42,11 @@ pub enum AudioNodeInfoStreamMessage {
     // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
     Queue(Vec<AudioMetaData>),
     Health(AudioNodeHealth),
-    Download(DownloadInfo),
+    Download {
+        active: Vec<DownloadIdentifier>,
+        failed: HashMap<DownloadIdentifier, ErrorResponse>,
+    },
     AudioStateInfo(AudioStateInfo),
-}
-
-#[derive(Debug, Clone, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub struct DownloadInfo {
-    pub in_progress: bool,
-    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -69,7 +67,7 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
     match msg {
         AudioNodeInfoStreamMessage::Queue(_) => AudioNodeInfoStreamType::Queue,
         AudioNodeInfoStreamMessage::Health(_) => AudioNodeInfoStreamType::Health,
-        AudioNodeInfoStreamMessage::Download(_) => AudioNodeInfoStreamType::Download,
+        AudioNodeInfoStreamMessage::Download { .. } => AudioNodeInfoStreamType::Download,
         AudioNodeInfoStreamMessage::AudioStateInfo(_) => AudioNodeInfoStreamType::AudioStateInfo,
     }
 }

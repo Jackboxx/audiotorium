@@ -1,11 +1,7 @@
-use crate::{
-    audio::audio_item::{AudioMetaData, AudioPlayerQueueItem},
-    utils::log_msg_received,
-    ErrorResponse,
-};
+use crate::{utils::log_msg_received, ErrorResponse};
 use std::{
     collections::VecDeque,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     sync::{Arc, Mutex},
     time::Duration,
@@ -13,30 +9,60 @@ use std::{
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use anyhow::anyhow;
+use base64::{engine::general_purpose, Engine};
+use serde::Serialize;
+use ts_rs::TS;
+
+#[cfg(not(debug_assertions))]
+const AUDIO_DIR: &str = "audio";
+
+#[cfg(debug_assertions)]
+const AUDIO_DIR: &str = "audio-dev";
 
 #[derive(Default)]
 pub struct AudioDownloader {
     queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
 }
 
-#[derive(Debug, Clone, Message)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
+pub enum DownloadIdentifier {
+    YouTube { url: String },
+}
+
+#[derive(Message)]
 #[rtype(result = "()")]
 pub struct NotifyDownloadFinished {
-    pub result: Result<DownloadAudioResponse, ErrorResponse>,
+    pub result: Result<DownloadIdentifier, (DownloadIdentifier, ErrorResponse)>,
 }
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "Result<(), ErrorResponse>")]
 pub struct DownloadAudioRequest {
     pub addr: Recipient<NotifyDownloadFinished>,
-    pub path: PathBuf,
-    pub url: String,
+    pub identifier: DownloadIdentifier,
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "()")]
-pub struct DownloadAudioResponse {
-    pub item: AudioPlayerQueueItem<PathBuf>,
+impl DownloadIdentifier {
+    pub fn uid(&self) -> String {
+        match self {
+            Self::YouTube { url } => {
+                let prefix = "youtube_audio_";
+                let base64_url = general_purpose::STANDARD.encode(url);
+
+                format!("{prefix}{base64_url}")
+            }
+        }
+    }
+
+    pub fn to_path(&self) -> PathBuf {
+        Path::new(AUDIO_DIR).join(self.uid())
+    }
+
+    pub fn to_path_with_ext(&self) -> PathBuf {
+        self.to_path().with_extension("wav")
+    }
 }
 
 impl Actor for AudioDownloader {
@@ -82,57 +108,47 @@ fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>) {
     };
 
     if let Some(req) = queue.pop_front() {
-        let DownloadAudioRequest { addr, path, url } = req;
-        log::info!("download for {url:?} has started");
+        let DownloadAudioRequest { addr, identifier } = req;
+        log::info!("download for {identifier:?} has started");
 
-        let Some(str_path) = path.to_str() else {
-            log::error!("path {path:?} can't be converted to a string");
-            addr.do_send(NotifyDownloadFinished {
-                result: Err(ErrorResponse {
-                    error: "failed to construct valid path".to_owned(),
-                }),
-            });
-            return;
-        };
+        let path = identifier.to_path();
 
-        if let Err(err) = download_audio(&url, str_path) {
-            log::error!("failed to download video, URL: {url}, ERROR: {err}");
-            addr.do_send(NotifyDownloadFinished {
-                result: Err(ErrorResponse {
-                    error: format!("failed to download video with url: {url}, ERROR: {err}"),
-                }),
-            });
-            return;
+        // TODO: get metadata from YouTube API and return way to query file path and metadata from
+        // db
+        match &identifier {
+            DownloadIdentifier::YouTube { url } => {
+                if let Err(err) = download_youtube_audio(&url, &path.to_string_lossy().to_string())
+                {
+                    log::error!("failed to download video, URL: {url}, ERROR: {err}");
+                    addr.do_send(NotifyDownloadFinished {
+                        result: Err((
+                            identifier.clone(),
+                            ErrorResponse {
+                                error: format!(
+                                    "failed to download video with url: {url}, ERROR: {err}"
+                                ),
+                            },
+                        )),
+                    });
+                    return;
+                }
+
+                addr.do_send(NotifyDownloadFinished {
+                    result: Ok(identifier),
+                });
+            }
         }
-
-        let path_with_ext = path.with_extension("mp3");
-        let item = AudioPlayerQueueItem {
-            metadata: AudioMetaData {
-                name: path
-                    .file_stem()
-                    .map(|os_str| os_str.to_string_lossy().to_string())
-                    .unwrap_or(String::new()),
-                author: None,
-                duration: None,
-                thumbnail_url: None,
-            },
-            locator: path_with_ext,
-        };
-
-        addr.do_send(NotifyDownloadFinished {
-            result: Ok(DownloadAudioResponse { item }),
-        });
     }
 }
 
-fn download_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
+fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
     let out = Command::new("yt-dlp")
         .args([
             "-f",
             "bestaudio",
             "-x",
             "--audio-format",
-            "mp3",
+            "wav",
             "-o",
             download_location,
             url,
