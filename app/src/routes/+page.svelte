@@ -52,7 +52,7 @@
 	<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
 		{#each nodeInfo as info}
 			<div
-				class={`flex items-center justify-center border border-solid bg-neutral-800
+				class={`flex cursor-pointer items-center justify-center border border-solid bg-neutral-800
                  ${getHealthColor(getSimpleHealth(info.health))} p-8 lg:p-12`}
 				role="cell"
 				tabindex="0"
