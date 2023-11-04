@@ -9,7 +9,7 @@ use crate::{
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
-    downloader::{AudioDownloader, DownloadAudio, NotifyDownloadFinished},
+    downloader::{AudioDownloader, DownloadAudioRequest, NotifyDownloadFinished},
     streams::node_streams::{
         AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
     },
@@ -438,7 +438,7 @@ fn handle_add_queue_item(
         // keep executing and not doing anything
         // this might be different now???
 
-        node.downloader_addr.do_send(DownloadAudio {
+        node.downloader_addr.do_send(DownloadAudioRequest {
             addr: node_addr,
             path,
             url,
