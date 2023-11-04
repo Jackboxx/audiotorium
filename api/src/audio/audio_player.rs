@@ -289,6 +289,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
+    // holy shit this should be unit tested
     pub fn move_queue_item(&mut self, old: usize, new: usize) {
         if old == new {
             return;

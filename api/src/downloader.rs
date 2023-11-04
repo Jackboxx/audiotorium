@@ -9,7 +9,6 @@ use std::{
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use anyhow::anyhow;
-use base64::{engine::general_purpose, Engine};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -49,9 +48,9 @@ impl DownloadIdentifier {
         match self {
             Self::YouTube { url } => {
                 let prefix = "youtube_audio_";
-                let base64_url = general_purpose::STANDARD.encode(url);
+                let hex_url = hex::encode(url);
 
-                format!("{prefix}{base64_url}")
+                format!("{prefix}{hex_url}")
             }
         }
     }
