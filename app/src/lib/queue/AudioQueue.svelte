@@ -1,13 +1,23 @@
 <script lang="ts">
 	import type { AudioMetaData } from '$api/AudioMetaData';
 	import type { AudioNodeCommand } from '$api/AudioNodeCommand';
+
+	import { dndzone, type DndEvent } from 'svelte-dnd-action';
 	import { API_PREFIX, sendCommandWithTimeout } from '$lib/utils';
 
 	export let nodeName: string;
 	export let currentHeadIndex: number | undefined;
 	export let queue: AudioMetaData[];
 
+	type DndQueueItem = { data: AudioMetaData; id: number };
+
+	let dndQueue: DndQueueItem[] = [];
+
 	let deleteAllowed = true;
+
+	let setOldPosLocked = false;
+	let oldPos: number | undefined;
+	let newPos: number | undefined;
 
 	const onElementClick = async (index: number) => {
 		const cmd: AudioNodeCommand = {
@@ -41,38 +51,82 @@
 
 		deleteAllowed = true;
 	};
+
+	const transformDraggedElement = (
+		_element: HTMLElement | undefined,
+		_data: any,
+		index: number | undefined
+	) => {
+		if (!setOldPosLocked) {
+			setOldPosLocked = true;
+			oldPos = index;
+		}
+
+		newPos = index;
+	};
+
+	const handleDndConsider = (e: CustomEvent<DndEvent<DndQueueItem>>) => {
+		dndQueue = e.detail.items;
+	};
+
+	const handleDndFinalize = async (e: CustomEvent<DndEvent<DndQueueItem>>) => {
+		setOldPosLocked = false;
+		dndQueue = e.detail.items;
+
+		if (oldPos !== undefined && newPos !== undefined) {
+			const cmd: AudioNodeCommand = {
+				MOVE_QUEUE_ITEM: {
+					oldPos,
+					newPos
+				}
+			};
+
+			await sendCommandWithTimeout(cmd, nodeName, 500, () => undefined);
+		}
+	};
+
+	$: dndQueue = queue.map((item, index) => ({ data: item, id: index }));
 </script>
 
-<div class="flex flex-grow flex-col gap-4">
-	{#each queue as audioDataEntry, index}
+<section
+	use:dndzone={{
+		items: dndQueue,
+		transformDraggedElement,
+		dropTargetStyle: { background: '#0000000' }
+	}}
+	on:consider={handleDndConsider}
+	on:finalize={handleDndFinalize}
+	class="flex flex-grow flex-col gap-4"
+>
+	{#each dndQueue as item (item.id)}
 		<div
 			role="button"
 			tabindex="0"
 			on:keydown={undefined}
-			on:dblclick={() => onElementClick(index)}
+			on:dblclick={() => onElementClick(item.id)}
 			class={`relative flex gap-2 rounded-sm ${
-				currentHeadIndex === index ? 'bg-neutral-800' : ''
+				currentHeadIndex === item.id ? 'bg-neutral-800' : ''
 			}`}
 		>
 			<img
 				class="h-[100px] min-h-[100px] w-[100px] min-w-[100px]"
-				src={audioDataEntry.thumbnail_url}
+				src={item.data.thumbnail_url}
 				alt=""
 			/>
 
 			<div class="flex flex-1 flex-col gap-1 truncate">
 				<span class="text-md sm:text-lg 2xl:text-xl">
-					{audioDataEntry.name}
+					{item.data.name}
 				</span>
 				<span class="text-sm lg:text-lg">
-					{audioDataEntry.author ?? '---'}
+					{item.data.author ?? '---'}
 				</span>
 			</div>
 
 			<div
 				role="button"
 				tabindex="0"
-				on:click={() => onRemove(index)}
+				on:click={() => onRemove(item.id)}
 				on:keydown={undefined}
 				class="min-h-10 min-w-10 absolute right-0 top-2 z-10 h-10 w-10"
 			>
@@ -80,4 +134,4 @@
 			</div>
 		</div>
 	{/each}
-</div>
+</section>
