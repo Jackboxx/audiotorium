@@ -2,4 +2,4 @@
 import type { AudioMetaData } from "./AudioMetaData";
 import type { AudioNodeHealth } from "./AudioNodeHealth";
 
-export type NodeSessionWsResponse = { "SESSION_CONNECTED_RESPONSE": { queue: Array | null, health: AudioNodeHealth | null, } };
+export type NodeSessionWsResponse = { "SESSION_CONNECTED_RESPONSE": { queue: Array<AudioMetaData> | null, health: AudioNodeHealth | null, } };

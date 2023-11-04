@@ -8,9 +8,13 @@ use actix_web::{
 use actix_web_actors::ws;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::{
-    audio::audio_player::{PlaybackInfo, ProcessorInfo, SerializableQueue},
+    audio::{
+        audio_item::AudioMetaData,
+        audio_player::{PlaybackInfo, ProcessorInfo},
+    },
     node::{node_server::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
@@ -26,24 +30,30 @@ pub enum AudioNodeInfoStreamType {
     AudioStateInfo,
 }
 
-#[derive(Debug, Clone, Serialize, Message)]
+#[derive(Debug, Clone, Serialize, TS, Message)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[rtype(result = "()")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub enum AudioNodeInfoStreamMessage {
-    Queue(SerializableQueue),
+    // can't use SerializableQueue due to issue discussed
+    // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
+    Queue(Vec<AudioMetaData>),
     Health(AudioNodeHealth),
     Download(DownloadInfo),
     AudioStateInfo(AudioStateInfo),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct DownloadInfo {
     pub in_progress: bool,
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
 pub struct AudioStateInfo {
     pub playback_info: PlaybackInfo,
     pub processor_info: ProcessorInfo,

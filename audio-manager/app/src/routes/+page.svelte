@@ -49,10 +49,7 @@
 	}
 </script>
 
-<div
-	style="min-height: 100vh; min-height: -webkit-fill-available;"
-	class="h-full bg-neutral-900 p-4"
->
+<div class="p-4">
 	<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
 		{#each nodeInfo as info}
 			<div
@@ -63,7 +60,11 @@
 				on:keydown={undefined}
 				on:click={() => {
 					if (getSimpleHealth(info.health) !== 'poor') {
-						window.location.href = `/queue/${info.source_name}`;
+						window.location.href = `/queue/${
+							info.source_name
+						}?human_readable_name=${encodeURIComponent(
+							info.human_readable_name
+						)}`;
 					}
 				}}
 			>

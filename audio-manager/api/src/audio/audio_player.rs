@@ -22,6 +22,7 @@ use crate::{
 use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
 
 type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
+
 pub type SerializableQueue = Vec<AudioMetaData>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
