@@ -14,11 +14,11 @@ use crate::{
     },
     streams::node_streams::{AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo},
     utils::log_msg_received,
-    ErrorResponse, AUDIO_DIR,
+    ErrorResponse,
 };
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
     thread,
     time::Duration,
 };
@@ -441,9 +441,7 @@ fn handle_add_queue_item(
     let AddQueueItemParams { metadata, url } = params.clone();
     let identifier = DownloadIdentifier::YouTube { url };
 
-    let path = Path::new(AUDIO_DIR)
-        .join(identifier.uid())
-        .with_extension("wav");
+    let path = identifier.to_path_with_ext();
 
     if !path.try_exists().unwrap_or(false) {
         if let Ok(()) = node.downloader_addr.try_send(DownloadAudioRequest {
