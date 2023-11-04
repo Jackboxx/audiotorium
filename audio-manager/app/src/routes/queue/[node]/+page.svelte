@@ -7,6 +7,7 @@
 	import type { AudioNodeInfoStreamMessage } from '$api/AudioNodeInfoStreamMessage';
 	import type { AudioNodeHealth } from '$api/AudioNodeHealth';
 	import type { AudioStateInfo } from '$api/AudioStateInfo';
+	import { WS_PREFIX } from '$lib/utils';
 
 	export let data: PageData;
 
@@ -20,7 +21,7 @@
 		humanReadableName = decodeURIComponent(url.get('human_readable_name') ?? '---');
 
 		const socket = new WebSocket(
-			`ws://127.0.0.1:50051/streams/node/${data.node}?wanted_info=QUEUE,HEALTH,AUDIO_STATE_INFO`
+			`${WS_PREFIX}/streams/node/${data.node}?wanted_info=QUEUE,HEALTH,AUDIO_STATE_INFO`
 		);
 
 		socket.addEventListener('message', (event) => {
@@ -48,7 +49,7 @@
 	});
 </script>
 
-<div class="flex h-full flex-col gap-8 p-4">
+<div class="flex h-full flex-col gap-8 p-4 last:p-0">
 	<span class="text-lg font-bold sm:text-xl 2xl:text-2xl"> {humanReadableName}</span>
 
 	<div class="flex flex-grow flex-col gap-2">

@@ -1,3 +1,6 @@
+[default]
+human_readable_name = "test source"
+
 [living_room]
 human_readable_name = "Living Room"
 
