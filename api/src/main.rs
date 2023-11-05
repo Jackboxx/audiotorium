@@ -1,4 +1,5 @@
 use actix::Actor;
+use actix_rt::Arbiter;
 use audio_manager_api::brain::brain_server::AudioBrain;
 use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::AudioDownloader;
@@ -30,7 +31,9 @@ async fn main() -> std::io::Result<()> {
         simple_logging::log_to_stderr(LevelFilter::Info);
     };
 
-    let downloader = AudioDownloader::default();
+    let download_arbiter = Arbiter::new();
+
+    let downloader = AudioDownloader::new(download_arbiter);
     let downloader_addr = downloader.start();
 
     let queue_server = AudioBrain::new(downloader_addr);

@@ -8,6 +8,7 @@ use std::{
 };
 
 use actix::{Actor, Context, Handler, Message, Recipient};
+use actix_rt::Arbiter;
 use anyhow::anyhow;
 use serde::Serialize;
 use ts_rs::TS;
@@ -18,8 +19,8 @@ const AUDIO_DIR: &str = "audio";
 #[cfg(debug_assertions)]
 const AUDIO_DIR: &str = "audio-dev";
 
-#[derive(Default)]
 pub struct AudioDownloader {
+    download_thread: Arbiter,
     queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
 }
 
@@ -41,6 +42,15 @@ pub struct NotifyDownloadFinished {
 pub struct DownloadAudioRequest {
     pub addr: Recipient<NotifyDownloadFinished>,
     pub identifier: DownloadIdentifier,
+}
+
+impl AudioDownloader {
+    pub fn new(download_thread: Arbiter) -> Self {
+        Self {
+            download_thread,
+            queue: Default::default(),
+        }
+    }
 }
 
 impl DownloadIdentifier {
@@ -72,7 +82,7 @@ impl Actor for AudioDownloader {
 
         let queue = self.queue.clone();
 
-        actix_rt::spawn(async move {
+        self.download_thread.spawn(async move {
             loop {
                 process_queue(queue.clone());
                 actix_rt::time::sleep(Duration::from_secs(1)).await;
