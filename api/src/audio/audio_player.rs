@@ -93,7 +93,7 @@ pub enum AudioProcessorMessage {
 }
 
 impl ProcessorInfo {
-    fn new(volume: f32) -> Self {
+    pub fn new(volume: f32) -> Self {
         Self {
             audio_volume: volume,
             audio_progress: Default::default(),

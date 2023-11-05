@@ -25,7 +25,7 @@ pub struct AudioDownloader {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum DownloadIdentifier {
     YouTube { url: String },

@@ -37,7 +37,7 @@ pub type SourceName = String;
 
 pub struct AudioNode {
     source_name: SourceName,
-    current_audio_progress: f64,
+    current_processor_info: ProcessorInfo,
     player: AudioPlayer<PathBuf>,
     downloader_addr: Addr<AudioDownloader>,
     active_downloads: HashSet<DownloadIdentifier>,
@@ -119,7 +119,6 @@ impl AudioNode {
     ) -> Self {
         Self {
             source_name,
-            current_audio_progress: 0.0,
             player,
             downloader_addr,
             server_addr,
@@ -127,6 +126,7 @@ impl AudioNode {
             failed_downloads: HashMap::default(),
             sessions: HashMap::default(),
             health: AudioNodeHealth::Good,
+            current_processor_info: ProcessorInfo::new(1.0),
         }
     }
 
@@ -162,20 +162,30 @@ impl Handler<NodeConnectMessage> for AudioNode {
         self.sessions.insert(id, msg.addr);
 
         let connection_response = NodeSessionWsResponse::SessionConnectedResponse {
-            queue: if msg.wanted_info.contains(&AudioNodeInfoStreamType::Queue) {
-                Some(extract_queue_metadata(self.player.queue()))
-            } else {
-                None
-            },
-            health: if msg.wanted_info.contains(&AudioNodeInfoStreamType::Health) {
-                Some(self.health.clone())
-            } else {
-                None
-            },
-            downloads: DownloadInfo {
-                active: self.active_downloads.clone().into_iter().collect(),
-                failed: self.failed_downloads.clone().into_iter().collect(),
-            },
+            queue: msg
+                .wanted_info
+                .contains(&AudioNodeInfoStreamType::Queue)
+                .then_some(extract_queue_metadata(self.player.queue())),
+            health: msg
+                .wanted_info
+                .contains(&AudioNodeInfoStreamType::Health)
+                .then_some(self.health.clone()),
+            downloads: msg
+                .wanted_info
+                .contains(&AudioNodeInfoStreamType::Download)
+                .then_some(DownloadInfo {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
+                }),
+            audio_state_info: msg
+                .wanted_info
+                .contains(&AudioNodeInfoStreamType::AudioStateInfo)
+                .then_some(AudioStateInfo {
+                    playback_info: PlaybackInfo {
+                        current_head_index: self.player.queue_head(),
+                    },
+                    processor_info: self.current_processor_info.clone(),
+                }),
         };
 
         NodeConnectResponse {
@@ -381,7 +391,7 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
                 };
             }
             AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
-                self.current_audio_progress = processor_info.audio_progress;
+                self.current_processor_info = processor_info.clone();
 
                 let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioStateInfo {
                     playback_info: PlaybackInfo {
@@ -404,16 +414,18 @@ impl Handler<TryRecoverDevice> for AudioNode {
         match self.health {
             AudioNodeHealth::Good => {}
             _ => {
-                let device_health_restored =
-                    if let Err(err) = self.player.try_recover_device(self.current_audio_progress) {
-                        log::error!(
-                            "failed to recover device for node with source name {}\nERROR: {err}",
-                            self.source_name
-                        );
-                        false
-                    } else {
-                        true
-                    };
+                let device_health_restored = if let Err(err) = self
+                    .player
+                    .try_recover_device(self.current_processor_info.audio_progress)
+                {
+                    log::error!(
+                        "failed to recover device for node with source name {}\nERROR: {err}",
+                        self.source_name
+                    );
+                    false
+                } else {
+                    true
+                };
 
                 if !device_health_restored {
                     thread::sleep(DEVICE_RECOVERY_ATTEMPT_INTERVAL);

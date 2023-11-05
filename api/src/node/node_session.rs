@@ -12,7 +12,8 @@ use crate::{
     audio::audio_item::AudioMetaData,
     node::node_server::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
-        get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, DownloadInfo,
+        get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
+        AudioStateInfo, DownloadInfo,
     },
 };
 
@@ -28,12 +29,14 @@ pub struct AudioNodeSession {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum NodeSessionWsResponse {
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     SessionConnectedResponse {
         // can't use SerializableQueue due to issue discussed
         // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
         queue: Option<Vec<AudioMetaData>>,
         health: Option<AudioNodeHealth>,
-        downloads: DownloadInfo,
+        downloads: Option<DownloadInfo>,
+        audio_state_info: Option<AudioStateInfo>,
     },
 }
 
