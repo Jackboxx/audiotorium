@@ -67,7 +67,7 @@ impl Actor for AudioNodeSession {
 
                         ctx.text(
                             serde_json::to_string(&res.connection_response)
-                                .unwrap_or("[]".to_owned()),
+                                .unwrap_or("failed to serialize on server".to_owned()),
                         );
                     }
 
@@ -100,7 +100,10 @@ impl Handler<AudioNodeInfoStreamMessage> for AudioNodeSession {
         let msg_type = get_type_of_stream_data(&msg);
 
         if self.wanted_info.contains(&msg_type) {
-            ctx.text(serde_json::to_string(&msg).unwrap_or(String::from("{}")))
+            ctx.text(
+                serde_json::to_string(&msg)
+                    .unwrap_or(String::from("failed to serialize on server")),
+            )
         }
     }
 }

@@ -216,7 +216,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
 
                 let download_fin_msg = AudioNodeInfoStreamMessage::Download {
                     active: self.active_downloads.clone().into_iter().collect(),
-                    failed: self.failed_downloads.clone(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
                 };
                 self.multicast(download_fin_msg);
 
@@ -230,7 +230,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
 
                 let msg = AudioNodeInfoStreamMessage::Download {
                     active: self.active_downloads.clone().into_iter().collect(),
-                    failed: self.failed_downloads.clone(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
                 };
 
                 self.multicast(msg);
@@ -449,7 +449,7 @@ fn handle_add_queue_item(
 
             return Ok(AudioNodeInfoStreamMessage::Download {
                 active: node.active_downloads.clone().into_iter().collect(),
-                failed: node.failed_downloads.clone(),
+                failed: node.failed_downloads.clone().into_iter().collect(),
             });
         }
     } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {

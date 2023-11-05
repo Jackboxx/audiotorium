@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use actix::Message;
 use actix_web::{
     get,
@@ -44,7 +42,7 @@ pub enum AudioNodeInfoStreamMessage {
     Health(AudioNodeHealth),
     Download {
         active: Vec<DownloadIdentifier>,
-        failed: HashMap<DownloadIdentifier, ErrorResponse>,
+        failed: Vec<(DownloadIdentifier, ErrorResponse)>,
     },
     AudioStateInfo(AudioStateInfo),
 }
