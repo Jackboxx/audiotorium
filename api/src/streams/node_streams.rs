@@ -40,11 +40,16 @@ pub enum AudioNodeInfoStreamMessage {
     // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
     Queue(Vec<AudioMetaData>),
     Health(AudioNodeHealth),
-    Download {
-        active: Vec<DownloadIdentifier>,
-        failed: Vec<(DownloadIdentifier, ErrorResponse)>,
-    },
+    Download(DownloadInfo),
     AudioStateInfo(AudioStateInfo),
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../app/src/api-types/")]
+pub struct DownloadInfo {
+    pub active: Vec<DownloadIdentifier>,
+    pub failed: Vec<(DownloadIdentifier, ErrorResponse)>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

@@ -12,7 +12,9 @@ use crate::{
     downloader::{
         AudioDownloader, DownloadAudioRequest, DownloadIdentifier, NotifyDownloadFinished,
     },
-    streams::node_streams::{AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo},
+    streams::node_streams::{
+        AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
+    },
     utils::log_msg_received,
     ErrorResponse,
 };
@@ -170,6 +172,10 @@ impl Handler<NodeConnectMessage> for AudioNode {
             } else {
                 None
             },
+            downloads: DownloadInfo {
+                active: self.active_downloads.clone().into_iter().collect(),
+                failed: self.failed_downloads.clone().into_iter().collect(),
+            },
         };
 
         NodeConnectResponse {
@@ -214,10 +220,10 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                     return;
                 };
 
-                let download_fin_msg = AudioNodeInfoStreamMessage::Download {
+                let download_fin_msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone().into_iter().collect(),
-                };
+                });
                 self.multicast(download_fin_msg);
 
                 let updated_queue_msg =
@@ -228,10 +234,10 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                 self.active_downloads.remove(&identifier);
                 self.failed_downloads.insert(identifier, err_resp);
 
-                let msg = AudioNodeInfoStreamMessage::Download {
+                let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone().into_iter().collect(),
-                };
+                });
 
                 self.multicast(msg);
             }
@@ -447,10 +453,10 @@ fn handle_add_queue_item(
         }) {
             node.active_downloads.insert(identifier);
 
-            return Ok(AudioNodeInfoStreamMessage::Download {
+            return Ok(AudioNodeInfoStreamMessage::Download(DownloadInfo {
                 active: node.active_downloads.clone().into_iter().collect(),
                 failed: node.failed_downloads.clone().into_iter().collect(),
-            });
+            }));
         }
     } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
         metadata: crate::audio::audio_item::AudioMetaData {

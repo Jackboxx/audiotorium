@@ -12,7 +12,7 @@ use crate::{
     audio::audio_item::AudioMetaData,
     node::node_server::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
-        get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
+        get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, DownloadInfo,
     },
 };
 
@@ -33,6 +33,7 @@ pub enum NodeSessionWsResponse {
         // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
         queue: Option<Vec<AudioMetaData>>,
         health: Option<AudioNodeHealth>,
+        downloads: DownloadInfo,
     },
 }
 
