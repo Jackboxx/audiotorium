@@ -196,6 +196,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
         match msg.result {
             Ok(identifier) => {
                 self.active_downloads.remove(&identifier);
+                self.failed_downloads.remove(&identifier);
 
                 // TODO: add db to handle metadata storing
                 let item = AudioPlayerQueueItem {
