@@ -227,6 +227,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
             Err((identifier, err_resp)) => {
                 self.active_downloads.remove(&identifier);
                 self.failed_downloads.insert(identifier, err_resp);
+
                 let msg = AudioNodeInfoStreamMessage::Download {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone(),
@@ -248,11 +249,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = AudioNodeInfoStreamMessage::Queue(handle_add_queue_item(
-                    self,
-                    ctx.address().recipient(),
-                    params.clone(),
-                )?);
+                let msg = handle_add_queue_item(self, ctx.address().recipient(), params.clone())?;
                 self.multicast(msg);
 
                 Ok(())
@@ -438,9 +435,8 @@ fn handle_add_queue_item(
     node: &mut AudioNode,
     node_addr: Recipient<NotifyDownloadFinished>,
     params: AddQueueItemParams,
-) -> Result<SerializableQueue, ErrorResponse> {
-    let AddQueueItemParams { metadata, url } = params.clone();
-    let identifier = DownloadIdentifier::YouTube { url };
+) -> Result<AudioNodeInfoStreamMessage, ErrorResponse> {
+    let AddQueueItemParams { identifier } = params.clone();
 
     let path = identifier.to_path_with_ext();
 
@@ -451,15 +447,18 @@ fn handle_add_queue_item(
         }) {
             node.active_downloads.insert(identifier);
 
-            let msg = AudioNodeInfoStreamMessage::Download {
+            return Ok(AudioNodeInfoStreamMessage::Download {
                 active: node.active_downloads.clone().into_iter().collect(),
                 failed: node.failed_downloads.clone(),
-            };
-
-            node.multicast(msg);
+            });
         }
     } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-        metadata,
+        metadata: crate::audio::audio_item::AudioMetaData {
+            name: String::new(),
+            author: None,
+            duration: None,
+            thumbnail_url: None,
+        },
         locator: path,
     }) {
         log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
@@ -468,7 +467,9 @@ fn handle_add_queue_item(
         });
     }
 
-    Ok(extract_queue_metadata(node.player.queue()))
+    Ok(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
+        node.player.queue(),
+    )))
 }
 
 fn handle_remove_queue_item(

@@ -4,11 +4,12 @@ use std::fmt::Display;
 use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
-    audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
+    audio::audio_player::LoopBounds,
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, LoopQueueParams, MoveQueueItemParams,
         PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams, SetAudioVolumeParams,
     },
+    downloader::DownloadIdentifier,
     streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
 use clap::{Parser, Subcommand};
@@ -79,14 +80,6 @@ pub enum CliNodeCommand {
     AddQueueItem {
         #[arg(short, long)]
         url: String,
-        #[arg(short, long)]
-        name: String,
-        #[arg(short, long)]
-        author: Option<String>,
-        #[arg(short, long)]
-        duration: Option<u128>,
-        #[arg(short, long)]
-        thumbnail_url: Option<String>,
     },
     RemoveQueueItem {
         index: usize,
@@ -178,21 +171,11 @@ impl Action {
 impl From<CliNodeCommand> for AudioNodeCommand {
     fn from(value: CliNodeCommand) -> Self {
         match value {
-            CliNodeCommand::AddQueueItem {
-                url,
-                name,
-                author,
-                duration,
-                thumbnail_url,
-            } => AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                metadata: AudioMetaData {
-                    name,
-                    author,
-                    duration,
-                    thumbnail_url,
-                },
-                url,
-            }),
+            CliNodeCommand::AddQueueItem { url } => {
+                AudioNodeCommand::AddQueueItem(AddQueueItemParams {
+                    identifier: DownloadIdentifier::YouTube { url },
+                })
+            }
             CliNodeCommand::RemoveQueueItem { index } => {
                 AudioNodeCommand::RemoveQueueItem(RemoveQueueItemParams { index })
             }

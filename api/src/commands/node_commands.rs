@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio::{audio_item::AudioMetaData, audio_player::LoopBounds},
-    utils::get_node_by_source_name,
-    AppData, ErrorResponse,
+    audio::audio_player::LoopBounds, downloader::DownloadIdentifier,
+    utils::get_node_by_source_name, AppData, ErrorResponse,
 };
 
 /// Commands a client can send to an audio node
@@ -44,8 +43,7 @@ pub enum AudioNodeCommand {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct AddQueueItemParams {
-    pub metadata: AudioMetaData,
-    pub url: String,
+    pub identifier: DownloadIdentifier,
 }
 
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]

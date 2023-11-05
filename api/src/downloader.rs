@@ -10,7 +10,7 @@ use std::{
 use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
 use anyhow::anyhow;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[cfg(not(debug_assertions))]
@@ -24,7 +24,7 @@ pub struct AudioDownloader {
     queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum DownloadIdentifier {
