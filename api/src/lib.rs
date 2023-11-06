@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use actix::Addr;
 use brain::brain_server::AudioBrain;
 use serde::{Deserialize, Serialize};
@@ -14,23 +16,18 @@ pub mod message_send_handler;
 pub mod node;
 pub mod utils;
 
+pub static POOL: OnceLock<SqlitePool> = OnceLock::new(); // set on server start
+
 #[cfg(test)]
 pub mod tests_utils;
 
 pub struct AppData {
-    db_pool: SqlitePool,
     brain_addr: Addr<AudioBrain>,
 }
 
 impl AppData {
-    pub fn new(db_pool: SqlitePool, brain_addr: Addr<AudioBrain>) -> Self {
-        Self {
-            db_pool,
-            brain_addr,
-        }
-    }
-    pub fn db_pool(&self) -> &SqlitePool {
-        &self.db_pool
+    pub fn new(brain_addr: Addr<AudioBrain>) -> Self {
+        Self { brain_addr }
     }
 
     pub fn brain_addr(&self) -> &Addr<AudioBrain> {

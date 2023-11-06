@@ -1,6 +1,6 @@
 use crate::{
     audio::{
-        audio_item::{AudioDataLocator, AudioPlayerQueueItem},
+        audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
         audio_player::{
             AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue,
         },
@@ -210,18 +210,12 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
 
     fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
         match msg.result {
-            Ok(identifier) => {
+            Ok((identifier, metadata)) => {
                 self.active_downloads.remove(&identifier);
                 self.failed_downloads.remove(&identifier);
 
-                // TODO: add db to handle metadata storing
                 let item = AudioPlayerQueueItem {
-                    metadata: crate::audio::audio_item::AudioMetaData {
-                        name: String::new(),
-                        author: None,
-                        duration: None,
-                        thumbnail_url: None,
-                    },
+                    metadata,
                     locator: identifier.to_path_with_ext(),
                 };
 
@@ -471,11 +465,11 @@ fn handle_add_queue_item(
             }));
         }
     } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-        metadata: crate::audio::audio_item::AudioMetaData {
-            name: String::new(),
+        metadata: AudioMetaData {
+            name: None,
             author: None,
             duration: None,
-            thumbnail_url: None,
+            cover_art_url: None,
         },
         locator: path,
     }) {

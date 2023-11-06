@@ -1,9 +1,9 @@
-use crate::{utils::log_msg_received, ErrorResponse};
+use crate::{audio::audio_item::AudioMetaData, utils::log_msg_received, ErrorResponse, POOL};
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
     process::Command,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 
@@ -11,6 +11,8 @@ use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use tokio::sync::Mutex;
 use ts_rs::TS;
 
 #[cfg(not(debug_assertions))]
@@ -34,7 +36,7 @@ pub enum DownloadIdentifier {
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct NotifyDownloadFinished {
-    pub result: Result<DownloadIdentifier, (DownloadIdentifier, ErrorResponse)>,
+    pub result: Result<(DownloadIdentifier, AudioMetaData), (DownloadIdentifier, ErrorResponse)>,
 }
 
 #[derive(Debug, Clone, Message)]
@@ -84,7 +86,11 @@ impl Actor for AudioDownloader {
 
         self.download_thread.spawn(async move {
             loop {
-                process_queue(queue.clone());
+                process_queue(
+                    queue.clone(),
+                    POOL.get().expect("pool should be set at server start"),
+                )
+                .await;
                 actix_rt::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -98,7 +104,7 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
         log_msg_received(&self, &msg);
 
         self.queue
-            .lock()
+            .try_lock()
             .map_err(|err| ErrorResponse {
                 error: format!("failed to add audio to download queue\nERROR: {err}"),
             })?
@@ -107,43 +113,75 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
     }
 }
 
-fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>) {
-    let mut queue = match queue.lock() {
-        Ok(queue) => queue,
-        Err(err) => {
-            log::error!("download queue: errror during processing\nERROR: {err}");
-            return;
-        }
+async fn download_youtube(
+    identifier: &DownloadIdentifier,
+    url: &str,
+    pool: &SqlitePool,
+) -> anyhow::Result<AudioMetaData> {
+    // TODO: get metadata from YouTube API and return way to query file path and metadata from
+    // db
+    let metadata = AudioMetaData {
+        name: None,
+        author: None,
+        duration: None,
+        cover_art_url: None,
     };
+
+    let key = identifier.uid();
+    sqlx::query!("insert into audio_metadata (identifier, name, author, duration, cover_art_url) values (?,?,?,?,?)",
+                    key,
+                    metadata.name,
+                    metadata.author,
+                    metadata.duration,
+                    metadata.cover_art_url
+                )
+                .execute(pool)
+                .await?;
+
+    let path = identifier.to_path();
+    if let Err(err) = download_youtube_audio(url, &path.to_string_lossy()) {
+        if let Err(db_err) = sqlx::query!("DELETE FROM audio_metadata WHERE identifier = ?", key)
+            .execute(pool)
+            .await
+        {
+            return Err(anyhow!("failed to download youtube audio and failed to rollback db write\nDOWNLOAD ERROR {err}\nDB ERROR {db_err}"));
+        } else {
+            return Err(err);
+        }
+    }
+
+    Ok(metadata)
+}
+
+async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &SqlitePool) {
+    let mut queue = queue.lock().await;
 
     if let Some(req) = queue.pop_front() {
         let DownloadAudioRequest { addr, identifier } = req;
         log::info!("download for {identifier:?} has started");
 
-        let path = identifier.to_path();
-
-        // TODO: get metadata from YouTube API and return way to query file path and metadata from
-        // db
         match &identifier {
             DownloadIdentifier::YouTube { url } => {
-                if let Err(err) = download_youtube_audio(&url, &path.to_string_lossy().to_string())
-                {
-                    log::error!("failed to download video, URL: {url}, ERROR: {err}");
-                    addr.do_send(NotifyDownloadFinished {
-                        result: Err((
-                            identifier.clone(),
-                            ErrorResponse {
-                                error: format!(
-                                    "failed to download video with url: {url}, ERROR: {err}"
-                                ),
-                            },
-                        )),
-                    });
-                    return;
-                }
+                let metadata = match download_youtube(&identifier, url, pool).await {
+                    Ok(metadata) => metadata,
+                    Err(err) => {
+                        log::error!("failed to download video, URL: {url}, ERROR: {err}");
+                        addr.do_send(NotifyDownloadFinished {
+                            result: Err((
+                                identifier.clone(),
+                                ErrorResponse {
+                                    error: format!(
+                                        "failed to download video with url: {url}, ERROR: {err}"
+                                    ),
+                                },
+                            )),
+                        });
+                        return;
+                    }
+                };
 
                 addr.do_send(NotifyDownloadFinished {
-                    result: Ok(identifier),
+                    result: Ok((identifier, metadata)),
                 });
             }
         }

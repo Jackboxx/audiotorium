@@ -7,7 +7,7 @@ use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::AudioDownloader;
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
-use audio_manager_api::AppData;
+use audio_manager_api::{AppData, POOL};
 use log::LevelFilter;
 
 use actix_cors::Cors;
@@ -21,16 +21,16 @@ async fn main() -> std::io::Result<()> {
 
     let addr;
     if cfg!(not(debug_assertions)) {
+        addr = dotenv::var("API_ADDRESS_PROD")
+            .expect("environment variable 'API_ADDRESS_PROD' should exist for production builds");
+
         simple_logging::log_to_file("info.log", LevelFilter::Info)
             .expect("logger should not fail to initialize");
-
-        addr = dotenv::var("API_ADDRESS_PROD")
-            .expect("environment variable 'API_ADDRESS_PROD' should exist for production builds")
     } else {
-        simple_logging::log_to_stderr(LevelFilter::Info);
-
         addr = dotenv::var("API_ADDRESS_DEV")
-            .expect("environment variable 'API_ADDRESS_DEV' should exist for debug builds")
+            .expect("environment variable 'API_ADDRESS_DEV' should exist for debug builds");
+
+        simple_logging::log_to_stderr(LevelFilter::Info);
     };
 
     let pool = SqlitePoolOptions::new()
@@ -39,7 +39,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .unwrap();
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("all migrations should be valid");
+    POOL.set(pool).expect("should never fail");
 
     let download_arbiter = Arbiter::new();
 
@@ -49,7 +53,7 @@ async fn main() -> std::io::Result<()> {
     let queue_server = AudioBrain::new(downloader_addr);
     let server_addr = queue_server.start();
 
-    let data = Data::new(AppData::new(pool, server_addr));
+    let data = Data::new(AppData::new(server_addr));
 
     HttpServer::new(move || {
         let cors = Cors::default()
