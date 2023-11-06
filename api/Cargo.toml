@@ -30,3 +30,6 @@ ts-rs = "7.0.0"
 
 [build-dependencies]
 tonic-build = "0.9.2"
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3
