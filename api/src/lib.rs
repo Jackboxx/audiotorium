@@ -1,6 +1,7 @@
 use actix::Addr;
 use brain::brain_server::AudioBrain;
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 use ts_rs::TS;
 
 pub mod commands;
@@ -17,7 +18,24 @@ pub mod utils;
 pub mod tests_utils;
 
 pub struct AppData {
-    pub brain_addr: Addr<AudioBrain>,
+    db_pool: SqlitePool,
+    brain_addr: Addr<AudioBrain>,
+}
+
+impl AppData {
+    pub fn new(db_pool: SqlitePool, brain_addr: Addr<AudioBrain>) -> Self {
+        Self {
+            db_pool,
+            brain_addr,
+        }
+    }
+    pub fn db_pool(&self) -> &SqlitePool {
+        &self.db_pool
+    }
+
+    pub fn brain_addr(&self) -> &Addr<AudioBrain> {
+        &self.brain_addr
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

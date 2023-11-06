@@ -83,13 +83,13 @@ async fn get_node_stream(
     req: HttpRequest,
     stream: web::Payload,
 ) -> HttpResponse {
-    let node_addr = match get_node_by_source_name(source_name.into_inner(), &data.brain_addr).await
-    {
-        Some(addr) => addr,
-        None => {
-            return HttpResponse::new(StatusCode::NOT_FOUND);
-        }
-    };
+    let node_addr =
+        match get_node_by_source_name(source_name.into_inner(), &data.brain_addr()).await {
+            Some(addr) => addr,
+            None => {
+                return HttpResponse::new(StatusCode::NOT_FOUND);
+            }
+        };
 
     match ws::start(
         AudioNodeSession::new(node_addr, query.into_inner().wanted_info),

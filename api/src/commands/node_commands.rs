@@ -95,13 +95,13 @@ pub async fn receive_node_cmd(
     source_name: web::Path<String>,
     cmd: web::Json<AudioNodeCommand>,
 ) -> HttpResponse {
-    let node_addr = match get_node_by_source_name(source_name.into_inner(), &data.brain_addr).await
-    {
-        Some(addr) => addr,
-        None => {
-            return HttpResponse::new(StatusCode::NOT_FOUND);
-        }
-    };
+    let node_addr =
+        match get_node_by_source_name(source_name.into_inner(), &data.brain_addr()).await {
+            Some(addr) => addr,
+            None => {
+                return HttpResponse::new(StatusCode::NOT_FOUND);
+            }
+        };
 
     match node_addr.send(cmd.into_inner()).await {
         Ok(res) => match res {

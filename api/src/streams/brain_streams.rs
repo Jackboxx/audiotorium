@@ -47,7 +47,7 @@ async fn get_brain_stream(
     stream: web::Payload,
 ) -> HttpResponse {
     match ws::start(
-        AudioBrainSession::new(data.brain_addr.clone(), query.into_inner().wanted_info),
+        AudioBrainSession::new(data.brain_addr().clone(), query.into_inner().wanted_info),
         &req,
         stream,
     ) {

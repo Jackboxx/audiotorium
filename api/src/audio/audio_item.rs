@@ -9,7 +9,7 @@ use ts_rs::TS;
 pub struct AudioMetaData {
     pub name: String,
     pub author: Option<String>,
-    pub duration: Option<u128>,
+    pub duration: Option<u64>,
     pub thumbnail_url: Option<String>,
 }
 

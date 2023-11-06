@@ -1,3 +1,5 @@
+use std::env;
+
 use actix::Actor;
 use actix_rt::Arbiter;
 use audio_manager_api::brain::brain_server::AudioBrain;
@@ -11,25 +13,33 @@ use log::LevelFilter;
 use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
+use sqlx::sqlite::SqlitePoolOptions;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
-    let addr = if cfg!(not(debug_assertions)) {
-        dotenv::var("API_ADDRESS_PROD")
-            .expect("environment variable 'API_ADDRESS_PROD' should exist for production builds")
-    } else {
-        dotenv::var("API_ADDRESS")
-            .expect("environment variable 'API_ADDRESS' should exist for debug builds")
-    };
-
+    let addr;
     if cfg!(not(debug_assertions)) {
         simple_logging::log_to_file("info.log", LevelFilter::Info)
             .expect("logger should not fail to initialize");
+
+        addr = dotenv::var("API_ADDRESS_PROD")
+            .expect("environment variable 'API_ADDRESS_PROD' should exist for production builds")
     } else {
         simple_logging::log_to_stderr(LevelFilter::Info);
+
+        addr = dotenv::var("API_ADDRESS_DEV")
+            .expect("environment variable 'API_ADDRESS_DEV' should exist for debug builds")
     };
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(env!("DATABASE_URL"))
+        .await
+        .unwrap();
+
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
 
     let download_arbiter = Arbiter::new();
 
@@ -39,9 +49,7 @@ async fn main() -> std::io::Result<()> {
     let queue_server = AudioBrain::new(downloader_addr);
     let server_addr = queue_server.start();
 
-    let data = Data::new(AppData {
-        brain_addr: server_addr,
-    });
+    let data = Data::new(AppData::new(pool, server_addr));
 
     HttpServer::new(move || {
         let cors = Cors::default()
