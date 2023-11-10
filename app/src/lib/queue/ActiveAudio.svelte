@@ -75,11 +75,14 @@
 		await new Promise(async (res, rej) => {
 			setTimeout(rej, 500);
 			res(
-				await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
-					method: 'POST',
-					body: JSON.stringify(cmd),
-					headers: { 'Content-Type': 'application/json' }
-				})
+				await fetch(
+					`${import.meta.env.VITE_API_PREFIX}/commands/node/${nodeName}`,
+					{
+						method: 'POST',
+						body: JSON.stringify(cmd),
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
 			);
 		});
 
