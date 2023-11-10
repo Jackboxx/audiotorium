@@ -2,13 +2,14 @@
 	import type { AudioNodeHealth } from '$api/AudioNodeHealth';
 	import type { AudioNodeInfo } from '$api/AudioNodeInfo';
 	import type { BrainSessionWsResponse } from '$api/BrainSessionWsResponse';
-	import { WS_PREFIX } from '$lib/utils';
 	import { onMount } from 'svelte';
 
 	let nodeInfo: AudioNodeInfo[] = [];
 
 	onMount(() => {
-		const socket = new WebSocket(`${WS_PREFIX}/streams/brain?wanted_info=NODE_INFO`);
+		const socket = new WebSocket(
+			`${import.meta.env.WS_PREFIX}/streams/brain?wanted_info=NODE_INFO`
+		);
 
 		socket.addEventListener('message', (event) => {
 			try {

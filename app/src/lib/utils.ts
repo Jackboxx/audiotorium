@@ -1,8 +1,5 @@
 import type { AudioNodeCommand } from '$api/AudioNodeCommand';
 
-export const API_PREFIX = 'http://127.0.0.1:50051';
-export const WS_PREFIX = 'ws://127.0.0.1:50051';
-
 export function unixMillisToMinutesString(millis: number): string {
 	const total_seconds = Math.trunc(millis / 1000);
 	const seconds = total_seconds % 60;
@@ -25,7 +22,7 @@ export async function sendCommandWithTimeout(
 		await new Promise(async (res, rej) => {
 			setTimeout(() => rej(timeoutIdentifier), timeoutMs);
 			res(
-				await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+				await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 					method: 'POST',
 					body: JSON.stringify(cmd),
 					headers: { 'Content-Type': 'application/json' }

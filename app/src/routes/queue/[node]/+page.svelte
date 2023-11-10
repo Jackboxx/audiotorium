@@ -7,7 +7,6 @@
 	import type { AudioNodeInfoStreamMessage } from '$api/AudioNodeInfoStreamMessage';
 	import type { AudioNodeHealth } from '$api/AudioNodeHealth';
 	import type { AudioStateInfo } from '$api/AudioStateInfo';
-	import { WS_PREFIX } from '$lib/utils';
 	import AudioQueue from '$lib/queue/AudioQueue.svelte';
 
 	export let data: PageData;
@@ -22,7 +21,9 @@
 		humanReadableName = decodeURIComponent(url.get('human_readable_name') ?? '---');
 
 		const socket = new WebSocket(
-			`${WS_PREFIX}/streams/node/${data.node}?wanted_info=QUEUE,HEALTH,AUDIO_STATE_INFO`
+			`${import.meta.env.WS_PREFIX}/streams/node/${
+				data.node
+			}?wanted_info=QUEUE,HEALTH,AUDIO_STATE_INFO`
 		);
 
 		socket.addEventListener('message', (event) => {
@@ -31,7 +32,7 @@
 				const connection_resp = resp as NodeSessionWsResponse;
 
 				if ('SESSION_CONNECTED_RESPONSE' in connection_resp) {
-					queue = connection_resp.SESSION_CONNECTED_RESPONSE.queue ?? [];
+					queue = connection_resp.SESSION_CONNECTED_RESPONSE.QUEUE ?? [];
 				}
 
 				const stream_resp = resp as AudioNodeInfoStreamMessage;

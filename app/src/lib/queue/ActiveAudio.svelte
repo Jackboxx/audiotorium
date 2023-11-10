@@ -2,7 +2,7 @@
 	import type { AudioMetaData } from '$api/AudioMetaData';
 	import type { AudioNodeCommand } from '$api/AudioNodeCommand';
 	import type { ProcessorInfo } from '$api/ProcessorInfo';
-	import { API_PREFIX, unixMillisToMinutesString } from '$lib/utils';
+	import { unixMillisToMinutesString } from '$lib/utils';
 
 	export let activeAudio: AudioMetaData | undefined;
 	export let playbackInfo: ProcessorInfo | undefined;
@@ -22,7 +22,7 @@
 				? '"UN_PAUSE_QUEUE"'
 				: '"PAUSE_QUEUE"';
 
-		await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: action,
 			headers: { 'Content-Type': 'application/json' }
@@ -30,7 +30,7 @@
 	};
 
 	const onNext = async () => {
-		await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: '"PLAY_NEXT"',
 			headers: { 'Content-Type': 'application/json' }
@@ -38,7 +38,7 @@
 	};
 
 	const onPrev = async () => {
-		await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: '"PLAY_PREVIOUS"',
 			headers: { 'Content-Type': 'application/json' }
@@ -75,7 +75,7 @@
 		await new Promise(async (res, rej) => {
 			setTimeout(rej, 500);
 			res(
-				await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+				await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 					method: 'POST',
 					body: JSON.stringify(cmd),
 					headers: { 'Content-Type': 'application/json' }

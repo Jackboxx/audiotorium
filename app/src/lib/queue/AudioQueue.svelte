@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { AudioMetaData } from '$api/AudioMetaData';
 	import type { AudioNodeCommand } from '$api/AudioNodeCommand';
+	import { sendCommandWithTimeout } from '$lib/utils';
 
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
-	import { API_PREFIX, sendCommandWithTimeout } from '$lib/utils';
 
 	export let nodeName: string;
 	export let currentHeadIndex: number | undefined;
@@ -26,7 +26,7 @@
 			}
 		};
 
-		await fetch(`${API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: JSON.stringify(cmd),
 			headers: { 'Content-Type': 'application/json' }
