@@ -8,7 +8,7 @@
 
 	onMount(() => {
 		const socket = new WebSocket(
-			`${import.meta.env.WS_PREFIX}/streams/brain?wanted_info=NODE_INFO`
+			`${import.meta.env.VITE_WS_PREFIX}/streams/brain?wanted_info=NODE_INFO`
 		);
 
 		socket.addEventListener('message', (event) => {

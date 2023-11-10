@@ -22,7 +22,7 @@ export async function sendCommandWithTimeout(
 		await new Promise(async (res, rej) => {
 			setTimeout(() => rej(timeoutIdentifier), timeoutMs);
 			res(
-				await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
+				await fetch(`${import.meta.env.VITE_API_PREFIX}/commands/node/${nodeName}`, {
 					method: 'POST',
 					body: JSON.stringify(cmd),
 					headers: { 'Content-Type': 'application/json' }

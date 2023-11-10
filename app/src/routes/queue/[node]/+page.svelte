@@ -21,7 +21,7 @@
 		humanReadableName = decodeURIComponent(url.get('human_readable_name') ?? '---');
 
 		const socket = new WebSocket(
-			`${import.meta.env.WS_PREFIX}/streams/node/${
+			`${import.meta.env.VITE_WS_PREFIX}/streams/node/${
 				data.node
 			}?wanted_info=QUEUE,HEALTH,AUDIO_STATE_INFO`
 		);

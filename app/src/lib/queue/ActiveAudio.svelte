@@ -22,7 +22,7 @@
 				? '"UN_PAUSE_QUEUE"'
 				: '"PAUSE_QUEUE"';
 
-		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.VITE_API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: action,
 			headers: { 'Content-Type': 'application/json' }
@@ -30,7 +30,7 @@
 	};
 
 	const onNext = async () => {
-		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.VITE_API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: '"PLAY_NEXT"',
 			headers: { 'Content-Type': 'application/json' }
@@ -38,7 +38,7 @@
 	};
 
 	const onPrev = async () => {
-		await fetch(`${import.meta.env.API_PREFIX}/commands/node/${nodeName}`, {
+		await fetch(`${import.meta.env.VITE_API_PREFIX}/commands/node/${nodeName}`, {
 			method: 'POST',
 			body: '"PLAY_PREVIOUS"',
 			headers: { 'Content-Type': 'application/json' }
