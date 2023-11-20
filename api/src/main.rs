@@ -13,7 +13,7 @@ use log::LevelFilter;
 use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::postgres::PgPoolOptions;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -33,7 +33,7 @@ async fn main() -> std::io::Result<()> {
         simple_logging::log_to_stderr(LevelFilter::Info);
     };
 
-    let pool = SqlitePoolOptions::new()
+    let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(env!("DATABASE_URL"))
         .await
@@ -43,6 +43,7 @@ async fn main() -> std::io::Result<()> {
         .run(&pool)
         .await
         .expect("all migrations should be valid");
+
     POOL.set(pool).expect("should never fail");
 
     let download_arbiter = Arbiter::new();

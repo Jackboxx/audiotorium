@@ -22,7 +22,7 @@ rtrb = "0.2.3"
 serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.99"
 simple-logging = "2.0.2"
-sqlx = { version = "0.7.2", features = ["runtime-async-std-native-tls", "macros", "migrate", "sqlite"] }
+sqlx = { version = "0.7.2", features = ["runtime-async-std-native-tls", "macros", "migrate", "postgres"] }
 symphonia-core = "0.5.3"
 tokio = { version = "1.28.2", features = ["macros", "rt-multi-thread"] }
 toml = "0.8.2"

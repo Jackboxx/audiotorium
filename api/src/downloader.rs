@@ -11,7 +11,7 @@ use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use tokio::sync::Mutex;
 use ts_rs::TS;
 
@@ -116,7 +116,7 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
 async fn download_youtube(
     identifier: &DownloadIdentifier,
     url: &str,
-    pool: &SqlitePool,
+    mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> anyhow::Result<AudioMetaData> {
     // TODO: get metadata from YouTube API and return way to query file path and metadata from
     // db
@@ -128,32 +128,27 @@ async fn download_youtube(
     };
 
     let key = identifier.uid();
-    sqlx::query!("insert into audio_metadata (identifier, name, author, duration, cover_art_url) values (?,?,?,?,?)",
+    sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",
                     key,
                     metadata.name,
                     metadata.author,
                     metadata.duration,
                     metadata.cover_art_url
                 )
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
 
     let path = identifier.to_path();
     if let Err(err) = download_youtube_audio(url, &path.to_string_lossy()) {
-        if let Err(db_err) = sqlx::query!("DELETE FROM audio_metadata WHERE identifier = ?", key)
-            .execute(pool)
-            .await
-        {
-            return Err(anyhow!("failed to download youtube audio and failed to rollback db write\nDOWNLOAD ERROR {err}\nDB ERROR {db_err}"));
-        } else {
-            return Err(err);
-        }
+        tx.rollback().await?;
+        return Err(err);
     }
 
+    tx.commit().await?;
     Ok(metadata)
 }
 
-async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &SqlitePool) {
+async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &PgPool) {
     let mut queue = queue.lock().await;
 
     if let Some(req) = queue.pop_front() {
@@ -162,7 +157,8 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
 
         match &identifier {
             DownloadIdentifier::YouTube { url } => {
-                let metadata = match download_youtube(&identifier, url, pool).await {
+                let tx = pool.begin().await.unwrap();
+                let metadata = match download_youtube(&identifier, url, tx).await {
                     Ok(metadata) => metadata,
                     Err(err) => {
                         log::error!("failed to download video, URL: {url}, ERROR: {err}");

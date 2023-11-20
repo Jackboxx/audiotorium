@@ -1,8 +1,8 @@
 fn main() {
-    let url = if cfg!(not(debug_assertions)) {
-        "sqlite:prod.db"
+    let url = if cfg!(debug_assertions) {
+        "postgres://audio:audiopass@172.18.0.1:50001"
     } else {
-        "sqlite:dev.db"
+        todo!("read url from env")
     };
 
     println!("cargo:rustc-env=DATABASE_URL={url}");

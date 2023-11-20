@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use actix::Addr;
 use brain::brain_server::AudioBrain;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use ts_rs::TS;
 
 pub mod commands;
@@ -16,7 +16,7 @@ pub mod message_send_handler;
 pub mod node;
 pub mod utils;
 
-pub static POOL: OnceLock<SqlitePool> = OnceLock::new(); // set on server start
+pub static POOL: OnceLock<PgPool> = OnceLock::new(); // set on server start
 
 #[cfg(test)]
 pub mod tests_utils;

@@ -1,5 +1,8 @@
-/target
-/audio
-/audio-dev
+target
+audio
+db-data
+audio-dev
+db-data-dev
 *.db
 *.log
+.env-*
