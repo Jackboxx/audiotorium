@@ -9,6 +9,7 @@ use crate::{
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
+    db_pool,
     downloader::{
         AudioDownloader, DownloadAudioRequest, DownloadIdentifier, NotifyDownloadFinished,
     },
@@ -16,7 +17,7 @@ use crate::{
         AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
     },
     utils::log_msg_received,
-    ErrorResponse,
+    ErrorResponse, IntoErrResp,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -259,8 +260,32 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                let msg = handle_add_queue_item(self, ctx.address().recipient(), params.clone())?;
-                self.multicast(msg);
+                // actix_rt::spawn(async {
+                //     dbg!("running");
+                //
+                //     let AddQueueItemParams { identifier } = params;
+                //     let uid = identifier.uid();
+                //     let res = sqlx::query_as!(
+                //         AudioMetaData,
+                //         "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
+                //         uid
+                //     )
+                //     .fetch_optional(db_pool())
+                //     .await
+                //     .into_err_resp()
+                //     .unwrap();
+                //
+                //     let msg = handle_add_queue_item(
+                //         res,
+                //         identifier.clone(),
+                //         self,
+                //         ctx.address().recipient(),
+                //     )
+                //     .await
+                //     .unwrap();
+                //
+                //     self.multicast(msg);
+                // });
 
                 Ok(())
             }
@@ -313,17 +338,13 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::PlayNext => {
                 log::info!("'PlayNext' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_next().map_err(|err| ErrorResponse {
-                    error: err.to_string(),
-                })?;
+                self.player.play_next().into_err_resp("")?;
                 Ok(())
             }
             AudioNodeCommand::PlayPrevious => {
                 log::info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_prev().map_err(|err| ErrorResponse {
-                    error: err.to_string(),
-                })?;
+                self.player.play_prev().into_err_resp("")?;
                 Ok(())
             }
             AudioNodeCommand::PlaySelected(params) => {
@@ -331,9 +352,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
 
                 self.player
                     .play_selected(params.index, false)
-                    .map_err(|err| ErrorResponse {
-                        error: err.to_string(),
-                    })?;
+                    .into_err_resp("")?;
                 Ok(())
             }
             AudioNodeCommand::LoopQueue(params) => {
@@ -443,16 +462,23 @@ impl Handler<TryRecoverDevice> for AudioNode {
     }
 }
 
-fn handle_add_queue_item(
+async fn handle_add_queue_item(
+    metadata: Option<AudioMetaData>,
+    identifier: DownloadIdentifier,
     node: &mut AudioNode,
     node_addr: Recipient<NotifyDownloadFinished>,
-    params: AddQueueItemParams,
 ) -> Result<AudioNodeInfoStreamMessage, ErrorResponse> {
-    let AddQueueItemParams { identifier } = params.clone();
-
-    let path = identifier.to_path_with_ext();
-
-    if !path.try_exists().unwrap_or(false) {
+    if let Some(metadata) = metadata {
+        if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
+            metadata,
+            locator: identifier.to_path_with_ext(),
+        }) {
+            log::error!("failed to auto play first song");
+            return Err(ErrorResponse {
+                error: format!("failed to auto play first song, ERROR: {err}"),
+            });
+        }
+    } else {
         if let Ok(()) = node.downloader_addr.try_send(DownloadAudioRequest {
             addr: node_addr,
             identifier: identifier.clone(),
@@ -464,19 +490,6 @@ fn handle_add_queue_item(
                 failed: node.failed_downloads.clone().into_iter().collect(),
             }));
         }
-    } else if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-        metadata: AudioMetaData {
-            name: None,
-            author: None,
-            duration: None,
-            cover_art_url: None,
-        },
-        locator: path,
-    }) {
-        log::error!("failed to auto play first song, MESSAGE: {params:?}, ERROR: {err}");
-        return Err(ErrorResponse {
-            error: format!("failed to auto play first song, ERROR: {err}"),
-        });
     }
 
     Ok(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(

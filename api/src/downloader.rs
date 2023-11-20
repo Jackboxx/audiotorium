@@ -1,4 +1,6 @@
-use crate::{audio::audio_item::AudioMetaData, utils::log_msg_received, ErrorResponse, POOL};
+use crate::{
+    audio::audio_item::AudioMetaData, db_pool, utils::log_msg_received, ErrorResponse, IntoErrResp,
+};
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -86,11 +88,7 @@ impl Actor for AudioDownloader {
 
         self.download_thread.spawn(async move {
             loop {
-                process_queue(
-                    queue.clone(),
-                    POOL.get().expect("pool should be set at server start"),
-                )
-                .await;
+                process_queue(queue.clone(), db_pool()).await;
                 actix_rt::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -105,9 +103,7 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
 
         self.queue
             .try_lock()
-            .map_err(|err| ErrorResponse {
-                error: format!("failed to add audio to download queue\nERROR: {err}"),
-            })?
+            .into_err_resp("failed to add audio to download queue\nERROR:")?
             .push_back(msg);
         Ok(())
     }
