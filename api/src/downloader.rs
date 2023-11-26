@@ -105,6 +105,7 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
             .try_lock()
             .into_err_resp("failed to add audio to download queue\nERROR:")?
             .push_back(msg);
+
         Ok(())
     }
 }
@@ -117,9 +118,9 @@ async fn download_youtube(
     // TODO: get metadata from YouTube API and return way to query file path and metadata from
     // db
     let metadata = AudioMetaData {
-        name: None,
+        name: Some("test name".to_owned()),
         author: None,
-        duration: None,
+        duration: Some(23434),
         cover_art_url: None,
     };
 

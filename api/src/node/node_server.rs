@@ -26,7 +26,10 @@ use std::{
     time::Duration,
 };
 
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse, Recipient};
+use actix::{
+    Actor, ActorFutureExt, Addr, AsyncContext, Context, Handler, Message, MessageResponse,
+    Recipient, ResponseActFuture, WrapFuture,
+};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -141,6 +144,29 @@ impl AudioNode {
             addr.do_send(msg.clone());
         }
     }
+
+    fn multicast_result<MOk, MErr>(&self, msg: Result<MOk, MErr>)
+    where
+        MOk: Message + Send + Clone + 'static,
+        MOk::Result: Send,
+        AudioNodeSession: Handler<MOk>,
+        MErr: Message + Send + Clone + 'static,
+        MErr::Result: Send,
+        AudioNodeSession: Handler<MErr>,
+    {
+        match msg {
+            Ok(msg) => {
+                for addr in self.sessions.values() {
+                    addr.do_send(msg.clone());
+                }
+            }
+            Err(msg) => {
+                for addr in self.sessions.values() {
+                    addr.do_send(msg.clone());
+                }
+            }
+        }
+    }
 }
 
 impl Actor for AudioNode {
@@ -250,6 +276,52 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     }
 }
 
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+enum AsyncAudioNodeCommand {
+    AddQueueItem(AddQueueItemParams),
+}
+
+impl Handler<AsyncAudioNodeCommand> for AudioNode {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            AsyncAudioNodeCommand::AddQueueItem(params) => {
+                let AddQueueItemParams { identifier } = params;
+                let uid = identifier.uid();
+
+                Box::pin(async move {
+                    sqlx::query_as!(
+                AudioMetaData,
+                "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
+                uid
+                    )
+                    .fetch_optional(db_pool())
+                    .await
+                    .into_err_resp("")
+
+                }.into_actor(self).map(move |res, act, ctx| {
+                    match res {
+                        Ok(metadata) => {
+                            let msg = handle_add_queue_item(
+                                metadata,
+                                identifier.clone(),
+                                act,
+                                ctx.address().recipient(),
+                            );
+
+                            act.multicast_result(msg);
+                        },
+                        Err(err_resp) => {act.multicast(err_resp);}
+                    }
+
+                }))
+            } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
+        }
+    }
+}
+
 impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
@@ -260,33 +332,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                // actix_rt::spawn(async {
-                //     dbg!("running");
-                //
-                //     let AddQueueItemParams { identifier } = params;
-                //     let uid = identifier.uid();
-                //     let res = sqlx::query_as!(
-                //         AudioMetaData,
-                //         "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
-                //         uid
-                //     )
-                //     .fetch_optional(db_pool())
-                //     .await
-                //     .into_err_resp()
-                //     .unwrap();
-                //
-                //     let msg = handle_add_queue_item(
-                //         res,
-                //         identifier.clone(),
-                //         self,
-                //         ctx.address().recipient(),
-                //     )
-                //     .await
-                //     .unwrap();
-                //
-                //     self.multicast(msg);
-                // });
-
+                ctx.notify(AsyncAudioNodeCommand::AddQueueItem(params.clone()));
                 Ok(())
             }
             AudioNodeCommand::RemoveQueueItem(params) => {
@@ -462,7 +508,7 @@ impl Handler<TryRecoverDevice> for AudioNode {
     }
 }
 
-async fn handle_add_queue_item(
+fn handle_add_queue_item(
     metadata: Option<AudioMetaData>,
     identifier: DownloadIdentifier,
     node: &mut AudioNode,
@@ -479,10 +525,12 @@ async fn handle_add_queue_item(
             });
         }
     } else {
-        if let Ok(()) = node.downloader_addr.try_send(DownloadAudioRequest {
+        let download_request = node.downloader_addr.try_send(DownloadAudioRequest {
             addr: node_addr,
             identifier: identifier.clone(),
-        }) {
+        });
+
+        if download_request.is_ok() {
             node.active_downloads.insert(identifier);
 
             return Ok(AudioNodeInfoStreamMessage::Download(DownloadInfo {

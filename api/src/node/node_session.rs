@@ -15,6 +15,7 @@ use crate::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
         AudioStateInfo, DownloadInfo,
     },
+    ErrorResponse,
 };
 
 use super::node_server::{AudioNode, AudioNodeHealth};
@@ -109,6 +110,17 @@ impl Handler<AudioNodeInfoStreamMessage> for AudioNodeSession {
                     .unwrap_or(String::from("failed to serialize on server")),
             )
         }
+    }
+}
+
+impl Handler<ErrorResponse> for AudioNodeSession {
+    type Result = ();
+
+    /// used to receive multicast messages from nodes
+    fn handle(&mut self, msg: ErrorResponse, ctx: &mut Self::Context) -> Self::Result {
+        ctx.text(
+            serde_json::to_string(&msg).unwrap_or(String::from("failed to serialize on server")),
+        )
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::OnceLock};
 
-use actix::Addr;
+use actix::{Addr, Message};
 use brain::brain_server::AudioBrain;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -39,9 +39,10 @@ impl AppData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Message)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
+#[rtype(result = "()")]
 pub struct ErrorResponse {
     error: String,
 }
