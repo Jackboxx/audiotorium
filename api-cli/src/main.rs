@@ -1,6 +1,10 @@
 use itertools::Itertools;
 use reqwest::Client;
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    io::Write,
+    process::{Command, Stdio},
+};
 use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
@@ -39,6 +43,9 @@ pub enum Action {
     },
     #[command(about = "Listen for data")]
     Listen {
+        #[arg(short, long)]
+        // command to run on received messages. None = print to stdout
+        command: Option<String>,
         #[command(subcommand)]
         con_type: ListenConnectionType,
     },
@@ -162,7 +169,7 @@ impl Action {
 
     fn get_con_type_endpoint(&self) -> String {
         match self {
-            Self::Listen { con_type } => format!("{con_type}"),
+            Self::Listen { con_type, .. } => format!("{con_type}"),
             Self::Send { con_type } => format!("{con_type}"),
         }
     }
@@ -238,7 +245,7 @@ async fn send_command(url: &str, body: &AudioNodeCommand) -> Result<String, reqw
     Ok(res.text().await?)
 }
 
-fn listen_on_socket(url: &str) {
+fn listen_on_socket(url: &str, cmd_str: Option<String>) {
     let client = ClientBuilder::new(url)
         .unwrap()
         .add_protocol("rust-websocket")
@@ -249,9 +256,30 @@ fn listen_on_socket(url: &str) {
 
     for message in receiver.incoming_messages() {
         match message {
-            Ok(OwnedMessage::Text(text)) => {
-                println!("{text}")
-            }
+            Ok(OwnedMessage::Text(text)) => match cmd_str {
+                Some(ref cmd_str) => {
+                    let (cmd, args) = cmd_str.split_once(" ").unwrap_or((cmd_str, ""));
+
+                    let echo_cmd = Command::new("echo")
+                        .arg(text)
+                        .stdout(Stdio::piped())
+                        .spawn()
+                        .unwrap();
+
+                    let cmd = Command::new(cmd)
+                        .arg(args)
+                        .stdin(Stdio::from(echo_cmd.stdout.unwrap()))
+                        .spawn()
+                        .unwrap();
+
+                    let out = cmd.wait_with_output().expect("Failed to read stdout");
+
+                    println!("{}", String::from_utf8_lossy(&out.stdout).to_string())
+                }
+                None => {
+                    println!("{text}");
+                }
+            },
             _ => {}
         }
     }
@@ -277,8 +305,8 @@ async fn main() -> Result<(), &'static str> {
                 let out = send_command(&url, body.as_ref().unwrap()).await.unwrap();
                 println!("{out}");
             }
-            Action::Listen { .. } => {
-                listen_on_socket(&url);
+            Action::Listen { command, .. } => {
+                listen_on_socket(&url, command);
             }
         }
     }
