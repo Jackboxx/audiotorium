@@ -137,7 +137,10 @@ async fn download_youtube(
 
     let path = identifier.to_path();
     if let Err(err) = download_youtube_audio(url, &path.to_string_lossy()) {
-        tx.rollback().await?;
+        if let Err(rollback_err) = tx.rollback().await {
+            return Err(anyhow!("ERROR 1: {err}\nERROR 2: {rollback_err}"));
+        }
+
         return Err(err);
     }
 
