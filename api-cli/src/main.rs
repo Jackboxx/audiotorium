@@ -2,7 +2,6 @@ use itertools::Itertools;
 use reqwest::Client;
 use std::{
     fmt::Display,
-    io::Write,
     process::{Command, Stdio},
 };
 use websocket::{ClientBuilder, OwnedMessage};
