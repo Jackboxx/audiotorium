@@ -199,8 +199,9 @@ fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Result<
         .output()?;
 
     if out.status.code().unwrap_or(1) != 0 {
-        dbg!(out);
-        return Err(anyhow!(""));
+        return Err(anyhow!(String::from_utf8(out.stderr).unwrap_or(
+            "failed to parse stderr of 'yt-dlp' command".to_owned()
+        )));
     }
 
     Ok(())
