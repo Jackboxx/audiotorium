@@ -1,11 +1,11 @@
 use crate::{
-    audio::{
+    audio_playback::{
         audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
         audio_player::{
             AudioPlayer, PlaybackInfo, PlaybackState, ProcessorInfo, SerializableQueue,
         },
     },
-    brain::brain_server::{AudioBrain, AudioNodeToBrainMessage},
+    brain::brain_server::AudioBrain,
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
     },
@@ -22,8 +22,6 @@ use crate::{
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    thread,
-    time::Duration,
 };
 
 use actix::{
@@ -33,22 +31,23 @@ use actix::{
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::node_session::{AudioNodeSession, NodeSessionWsResponse};
-
-const DEVICE_RECOVERY_ATTEMPT_INTERVAL: Duration = Duration::from_secs(5);
+use super::{
+    health::AudioNodeHealth,
+    node_session::{AudioNodeSession, NodeSessionWsResponse},
+};
 
 pub type SourceName = String;
 
 pub struct AudioNode {
-    source_name: SourceName,
-    current_processor_info: ProcessorInfo,
-    player: AudioPlayer<PathBuf>,
-    downloader_addr: Addr<AudioDownloader>,
-    active_downloads: HashSet<DownloadIdentifier>,
-    failed_downloads: HashMap<DownloadIdentifier, ErrorResponse>,
-    server_addr: Addr<AudioBrain>,
-    sessions: HashMap<usize, Addr<AudioNodeSession>>,
-    health: AudioNodeHealth,
+    pub(super) source_name: SourceName,
+    pub(super) current_processor_info: ProcessorInfo,
+    pub(super) player: AudioPlayer<PathBuf>,
+    pub(super) downloader_addr: Addr<AudioDownloader>,
+    pub(super) active_downloads: HashSet<DownloadIdentifier>,
+    pub(super) failed_downloads: HashMap<DownloadIdentifier, ErrorResponse>,
+    pub(super) server_addr: Addr<AudioBrain>,
+    pub(super) sessions: HashMap<usize, Addr<AudioNodeSession>>,
+    pub(super) health: AudioNodeHealth,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -57,38 +56,6 @@ pub struct AudioNodeInfo {
     pub source_name: String,
     pub human_readable_name: String,
     pub health: AudioNodeHealth,
-}
-
-#[derive(Debug, Clone, Message, PartialEq)]
-#[rtype(result = "()")]
-pub enum AudioProcessorToNodeMessage {
-    AudioStateInfo(ProcessorInfo),
-    Health(AudioNodeHealth),
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub enum AudioNodeHealth {
-    Good,
-    Mild(AudioNodeHealthMild),
-    Poor(AudioNodeHealthPoor),
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub enum AudioNodeHealthMild {
-    Buffering,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub enum AudioNodeHealthPoor {
-    DeviceNotAvailable,
-    AudioStreamReadFailed,
-    AudioBackendError(String),
 }
 
 #[derive(Debug, Clone, Message)]
@@ -110,10 +77,6 @@ pub struct NodeConnectResponse {
     pub connection_response: NodeSessionWsResponse,
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "()")]
-pub struct TryRecoverDevice;
-
 impl AudioNode {
     pub fn new(
         source_name: String,
@@ -134,7 +97,7 @@ impl AudioNode {
         }
     }
 
-    fn multicast<M>(&self, msg: M)
+    pub(super) fn multicast<M>(&self, msg: M)
     where
         M: Message + Send + Clone + 'static,
         M::Result: Send,
@@ -145,7 +108,7 @@ impl AudioNode {
         }
     }
 
-    fn multicast_result<MOk, MErr>(&self, msg: Result<MOk, MErr>)
+    pub(super) fn multicast_result<MOk, MErr>(&self, msg: Result<MOk, MErr>)
     where
         MOk: Message + Send + Clone + 'static,
         MOk::Result: Send,
@@ -276,52 +239,6 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
     }
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "()")]
-enum AsyncAudioNodeCommand {
-    AddQueueItem(AddQueueItemParams),
-}
-
-impl Handler<AsyncAudioNodeCommand> for AudioNode {
-    type Result = ResponseActFuture<Self, ()>;
-
-    fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
-        match msg {
-            AsyncAudioNodeCommand::AddQueueItem(params) => {
-                let AddQueueItemParams { identifier } = params;
-                let uid = identifier.uid();
-
-                Box::pin(async move {
-                    sqlx::query_as!(
-                AudioMetaData,
-                "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
-                uid
-                    )
-                    .fetch_optional(db_pool())
-                    .await
-                    .into_err_resp("")
-
-                }.into_actor(self).map(move |res, act, ctx| {
-                    match res {
-                        Ok(metadata) => {
-                            let msg = handle_add_queue_item(
-                                metadata,
-                                identifier.clone(),
-                                act,
-                                ctx.address().recipient(),
-                            );
-
-                            act.multicast_result(msg);
-                        },
-                        Err(err_resp) => {act.multicast(err_resp);}
-                    }
-
-                }))
-            } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
-        }
-    }
-}
-
 impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
 
@@ -411,100 +328,49 @@ impl Handler<AudioNodeCommand> for AudioNode {
     }
 }
 
-impl Handler<AudioProcessorToNodeMessage> for AudioNode {
-    type Result = ();
-
-    fn handle(
-        &mut self,
-        msg: AudioProcessorToNodeMessage,
-        ctx: &mut Self::Context,
-    ) -> Self::Result {
-        match msg {
-            AudioProcessorToNodeMessage::AudioStateInfo(_) => {}
-            _ => {
-                log_msg_received(&self, &msg);
-            }
-        }
-
-        match msg {
-            AudioProcessorToNodeMessage::Health(health) => {
-                self.health = health.clone();
-
-                self.server_addr
-                    .do_send(AudioNodeToBrainMessage::NodeHealthUpdate((
-                        self.source_name.to_owned(),
-                        health.clone(),
-                    )));
-
-                self.multicast(AudioNodeInfoStreamMessage::Health(health));
-
-                match self.health {
-                    AudioNodeHealth::Good => {}
-                    _ => {
-                        if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
-                            log::error!(
-                                "failed to send initial 'try device revocer' message\nERROR: {err}"
-                            );
-                        }
-                    }
-                };
-            }
-            AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
-                self.current_processor_info = processor_info.clone();
-
-                let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioStateInfo {
-                    playback_info: PlaybackInfo {
-                        current_head_index: self.player.queue_head(),
-                    },
-                    processor_info,
-                });
-
-                self.multicast(msg);
-            }
-        }
-    }
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+enum AsyncAudioNodeCommand {
+    AddQueueItem(AddQueueItemParams),
 }
 
-impl Handler<TryRecoverDevice> for AudioNode {
-    type Result = ();
+impl Handler<AsyncAudioNodeCommand> for AudioNode {
+    type Result = ResponseActFuture<Self, ()>;
 
-    #[allow(clippy::collapsible_else_if)]
-    fn handle(&mut self, _msg: TryRecoverDevice, ctx: &mut Self::Context) -> Self::Result {
-        match self.health {
-            AudioNodeHealth::Good => {}
-            _ => {
-                let device_health_restored = if let Err(err) = self
-                    .player
-                    .try_recover_device(self.current_processor_info.audio_progress)
-                {
-                    log::error!(
-                        "failed to recover device for node with source name {}\nERROR: {err}",
-                        self.source_name
-                    );
-                    false
-                } else {
-                    true
-                };
+    fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            AsyncAudioNodeCommand::AddQueueItem(params) => {
+                let AddQueueItemParams { identifier } = params;
+                let uid = identifier.uid();
 
-                if !device_health_restored {
-                    thread::sleep(DEVICE_RECOVERY_ATTEMPT_INTERVAL);
+                Box::pin(async move {
+                    sqlx::query_as!(
+                AudioMetaData,
+                "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
+                uid
+                    )
+                    .fetch_optional(db_pool())
+                    .await
+                    .into_err_resp("")
 
-                    if let Err(err) = ctx.address().try_send(TryRecoverDevice) {
-                        log::error!("failed to resend 'try device revocer' message\nERROR: {err}");
-                    };
-                } else {
-                    if let Err(err) = ctx
-                        .address()
-                        .try_send(AudioProcessorToNodeMessage::Health(AudioNodeHealth::Good))
-                    {
-                        log::error!(
-                            "failed to inform node with source name {} of recovery\nERROR: {err}",
-                            self.source_name
-                        )
-                    };
-                }
-            }
-        };
+                }.into_actor(self).map(move |res, act, ctx| {
+                    match res {
+                        Ok(metadata) => {
+                            let msg = handle_add_queue_item(
+                                metadata,
+                                identifier.clone(),
+                                act,
+                                ctx.address().recipient(),
+                            );
+
+                            act.multicast_result(msg);
+                        },
+                        Err(err_resp) => {act.multicast(err_resp);}
+                    }
+
+                }))
+            } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
+        }
     }
 }
 

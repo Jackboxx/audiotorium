@@ -12,8 +12,9 @@ use ts_rs::TS;
 use crate::{
     commands::node_commands::AudioNodeCommand,
     message_send_handler::{ChangeDetector, MessageSendHandler, RateLimiter},
-    node::node_server::{
-        AudioNode, AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor,
+    node::{
+        health::{AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor},
+        node_server::AudioNode,
         AudioProcessorToNodeMessage,
     },
     utils::setup_device,

@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse};
 
 use crate::{
-    audio::audio_player::AudioPlayer,
+    audio_playback::audio_player::AudioPlayer,
     downloader::AudioDownloader,
-    node::node_server::{AudioNode, AudioNodeHealth, AudioNodeInfo, SourceName},
+    node::{
+        health::AudioNodeHealth,
+        node_server::{AudioNode, AudioNodeInfo, SourceName},
+    },
     streams::brain_streams::{AudioBrainInfoStreamMessage, AudioBrainInfoStreamType},
     utils::{get_audio_sources, log_msg_received},
 };

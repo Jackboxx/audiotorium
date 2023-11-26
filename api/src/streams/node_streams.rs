@@ -11,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio::{
+    audio_playback::{
         audio_item::AudioMetaData,
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
     downloader::DownloadIdentifier,
-    node::{node_server::AudioNodeHealth, node_session::AudioNodeSession},
+    node::{health::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
     AppData, ErrorResponse,

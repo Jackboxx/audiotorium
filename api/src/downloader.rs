@@ -1,5 +1,6 @@
 use crate::{
-    audio::audio_item::AudioMetaData, db_pool, utils::log_msg_received, ErrorResponse, IntoErrResp,
+    audio_playback::audio_item::AudioMetaData, db_pool, utils::log_msg_received, ErrorResponse,
+    IntoErrResp,
 };
 use std::{
     collections::VecDeque,

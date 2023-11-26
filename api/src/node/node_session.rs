@@ -9,7 +9,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::{
-    audio::audio_item::AudioMetaData,
+    audio_playback::audio_item::AudioMetaData,
     node::node_server::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
@@ -18,7 +18,7 @@ use crate::{
     ErrorResponse,
 };
 
-use super::node_server::{AudioNode, AudioNodeHealth};
+use super::{health::AudioNodeHealth, node_server::AudioNode};
 
 pub struct AudioNodeSession {
     id: usize,

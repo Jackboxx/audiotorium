@@ -9,7 +9,7 @@ use ts_rs::TS;
 pub mod commands;
 pub mod streams;
 
-pub mod audio;
+pub mod audio_playback;
 pub mod brain;
 pub mod downloader;
 pub mod message_send_handler;

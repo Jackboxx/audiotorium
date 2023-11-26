@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio::audio_player::LoopBounds, downloader::DownloadIdentifier,
+    audio_playback::audio_player::LoopBounds, downloader::DownloadIdentifier,
     utils::get_node_by_source_name, AppData, ErrorResponse,
 };
 
