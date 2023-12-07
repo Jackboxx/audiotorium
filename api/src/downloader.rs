@@ -1,6 +1,12 @@
 use crate::{
-    audio_hosts::youtube::get_video_metadata, audio_playback::audio_item::AudioMetaData, db_pool,
-    utils::log_msg_received, yt_api_key, ErrorResponse, IntoErrResp,
+    audio_hosts::youtube::{
+        playlist::get_playlist_video_urls, video::get_video_metadata, youtube_content_type,
+        YoutubeContentType,
+    },
+    audio_playback::audio_item::AudioMetaData,
+    db_pool,
+    utils::log_msg_received,
+    yt_api_key, ErrorResponse, IntoErrResp,
 };
 use std::{
     collections::VecDeque,
@@ -111,6 +117,105 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
     }
 }
 
+async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &PgPool) {
+    let mut queue = queue.lock().await;
+
+    if let Some(req) = queue.pop_front() {
+        let DownloadAudioRequest { addr, identifier } = req;
+        log::info!("download for {identifier:?} has started");
+
+        match &identifier {
+            DownloadIdentifier::YouTube { url } => {
+                let content_type = youtube_content_type(url.as_str());
+                match content_type {
+                    YoutubeContentType::Video => {
+                        process_video(pool, &addr, identifier.clone(), url).await
+                    }
+                    YoutubeContentType::Playlist => {
+                        process_playlist(&mut queue, &addr, identifier.clone(), url).await
+                    }
+                    YoutubeContentType::Invalid => {
+                        log::error!("invalid youtube video url, URL: {url}");
+                        addr.do_send(NotifyDownloadFinished {
+                            result: Err((
+                                identifier,
+                                ErrorResponse {
+                                    error: "invalid youtube video url".to_owned(),
+                                },
+                            )),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn process_video(
+    pool: &PgPool,
+    addr: &Recipient<NotifyDownloadFinished>,
+    identifier: DownloadIdentifier,
+    url: &str,
+) {
+    let tx = pool.begin().await.unwrap();
+    let metadata = match download_youtube(&identifier, url, tx).await {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            log::error!("failed to download video, URL: {url}, ERROR: {err}");
+            addr.do_send(NotifyDownloadFinished {
+                result: Err((
+                    identifier,
+                    ErrorResponse {
+                        error: format!("failed to download video with url: {url}"),
+                    },
+                )),
+            });
+            return;
+        }
+    };
+
+    addr.do_send(NotifyDownloadFinished {
+        result: Ok((identifier, metadata)),
+    });
+}
+
+async fn process_playlist(
+    queue: &mut VecDeque<DownloadAudioRequest>,
+    addr: &Recipient<NotifyDownloadFinished>,
+    identifier: DownloadIdentifier,
+    url: &str,
+) {
+    let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
+        Ok(urls) => urls,
+        Err(err) => {
+            log::error!(
+                "failed to get playlist information for youtube playlist, URL: {url}, ERROR: {err}"
+            );
+            addr.do_send(NotifyDownloadFinished {
+                result: Err((
+                    identifier,
+                    ErrorResponse {
+                        error: format!(
+                            "failed to get playlist information for youtube playlist, URL: {url}"
+                        ),
+                    },
+                )),
+            });
+            return;
+        }
+    };
+
+    for url in urls {
+        let identifier = DownloadIdentifier::YouTube { url };
+        let request = DownloadAudioRequest {
+            identifier,
+            addr: addr.clone(),
+        };
+
+        queue.push_back(request);
+    }
+}
+
 async fn download_youtube(
     identifier: &DownloadIdentifier,
     url: &str,
@@ -140,42 +245,6 @@ async fn download_youtube(
 
     tx.commit().await?;
     Ok(metadata)
-}
-
-async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &PgPool) {
-    let mut queue = queue.lock().await;
-
-    if let Some(req) = queue.pop_front() {
-        let DownloadAudioRequest { addr, identifier } = req;
-        log::info!("download for {identifier:?} has started");
-
-        match &identifier {
-            DownloadIdentifier::YouTube { url } => {
-                let tx = pool.begin().await.unwrap();
-                let metadata = match download_youtube(&identifier, url, tx).await {
-                    Ok(metadata) => metadata,
-                    Err(err) => {
-                        log::error!("failed to download video, URL: {url}, ERROR: {err}");
-                        addr.do_send(NotifyDownloadFinished {
-                            result: Err((
-                                identifier.clone(),
-                                ErrorResponse {
-                                    error: format!(
-                                        "failed to download video with url: {url}, ERROR: {err}"
-                                    ),
-                                },
-                            )),
-                        });
-                        return;
-                    }
-                };
-
-                addr.do_send(NotifyDownloadFinished {
-                    result: Ok((identifier, metadata)),
-                });
-            }
-        }
-    }
 }
 
 fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Result<()> {

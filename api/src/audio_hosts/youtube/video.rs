@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 use anyhow::anyhow;
 use serde::Deserialize;
 
@@ -21,7 +19,7 @@ pub struct YoutubeVideoSnippet {
 }
 
 #[derive(Debug, Deserialize)]
-struct YoutubeVideoMaxResThumbnail {
+pub struct YoutubeVideoMaxResThumbnail {
     maxres: YoutubeVideoThumbnail,
 }
 
@@ -90,11 +88,11 @@ pub async fn get_video_metadata(url: &str, api_key: &str) -> anyhow::Result<Yout
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct YoutubeVideItems {
+    struct YoutubeVideoItems {
         items: Vec<YoutubeVideo>,
     }
 
-    let videos: YoutubeVideItems = serde_json::from_str(&resp_text)?;
+    let videos: YoutubeVideoItems = serde_json::from_str(&resp_text)?;
     let Some(video) = videos.items.into_iter().next() else {
         return Err(anyhow!("no youtube video found for id {watch_id}"));
     };
@@ -102,7 +100,6 @@ pub async fn get_video_metadata(url: &str, api_key: &str) -> anyhow::Result<Yout
     Ok(video)
 }
 
-// https://www.youtube.com/watch?v=rbzxxbuk3sk
 fn extract_watch_id(url: &str) -> Option<&str> {
     url.split_once("watch?v=").map(|s| s.1)
 }
