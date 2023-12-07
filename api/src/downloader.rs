@@ -1,6 +1,6 @@
 use crate::{
-    audio_playback::audio_item::AudioMetaData, db_pool, utils::log_msg_received, ErrorResponse,
-    IntoErrResp,
+    audio_hosts::youtube::get_video_metadata, audio_playback::audio_item::AudioMetaData, db_pool,
+    utils::log_msg_received, yt_api_key, ErrorResponse, IntoErrResp,
 };
 use std::{
     collections::VecDeque,
@@ -116,14 +116,7 @@ async fn download_youtube(
     url: &str,
     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> anyhow::Result<AudioMetaData> {
-    // TODO: get metadata from YouTube API and return way to query file path and metadata from
-    // db
-    let metadata = AudioMetaData {
-        name: Some("test name".to_owned()),
-        author: None,
-        duration: Some(23434),
-        cover_art_url: None,
-    };
+    let metadata: AudioMetaData = get_video_metadata(url, yt_api_key()).await?.into();
 
     let key = identifier.uid();
     sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",

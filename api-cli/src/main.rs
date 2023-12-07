@@ -7,7 +7,7 @@ use std::{
 use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
-    audio::audio_player::LoopBounds,
+    audio_playback::audio_player::LoopBounds,
     commands::node_commands::{
         AddQueueItemParams, AudioNodeCommand, LoopQueueParams, MoveQueueItemParams,
         PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams, SetAudioVolumeParams,

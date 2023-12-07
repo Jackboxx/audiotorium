@@ -7,7 +7,7 @@ use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::AudioDownloader;
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
-use audio_manager_api::{AppData, POOL};
+use audio_manager_api::{AppData, POOL, YOUTUBE_API_KEY};
 use log::LevelFilter;
 
 use actix_cors::Cors;
@@ -44,7 +44,13 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("all migrations should be valid");
 
+    let youtube_api_key =
+        dotenv::var("YOUTUE_API_KEY").expect("environment variable 'YOUTUBE_API_KEY' should exist");
+
     POOL.set(pool).expect("should never fail");
+    YOUTUBE_API_KEY
+        .set(youtube_api_key)
+        .expect("should never fail");
 
     let download_arbiter = Arbiter::new();
 

@@ -9,6 +9,7 @@ use ts_rs::TS;
 pub mod commands;
 pub mod streams;
 
+pub mod audio_hosts;
 pub mod audio_playback;
 pub mod brain;
 pub mod downloader;
@@ -17,9 +18,16 @@ pub mod node;
 pub mod utils;
 
 pub static POOL: OnceLock<PgPool> = OnceLock::new(); // set on server start
+pub static YOUTUBE_API_KEY: OnceLock<String> = OnceLock::new(); // set on server start
 
 pub fn db_pool<'a>() -> &'a PgPool {
     POOL.get().expect("pool should be set at server start")
+}
+
+pub fn yt_api_key<'a>() -> &'a str {
+    YOUTUBE_API_KEY
+        .get()
+        .expect("youtube api key should be set at server start")
 }
 
 #[cfg(test)]
