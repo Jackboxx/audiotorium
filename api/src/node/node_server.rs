@@ -262,7 +262,7 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
                 self.multicast(msg);
             }
             DownloadUpdate::BatchUpdated { batch } => match batch {
-                DownloadInfo::YouTubePlaylist { ref video_urls, .. } => {
+                DownloadInfo::YoutubePlaylist { ref video_urls, .. } => {
                     if video_urls.is_empty() {
                         self.active_downloads.remove(&batch);
                     } else {
@@ -382,13 +382,13 @@ enum AsyncAudioNodeCommand {
 impl DownloadIdentifierParam {
     async fn to_internal_identifier(self) -> anyhow::Result<DownloadIdentifier> {
         let url = match self {
-            Self::YouTube { url } => url,
+            Self::Youtube { url } => url,
         };
 
         let content_type = youtube_content_type(url.as_str());
 
         match content_type {
-            YoutubeContentType::Video => Ok(DownloadIdentifier::YouTubeVideo { url }),
+            YoutubeContentType::Video => Ok(DownloadIdentifier::YoutubeVideo { url }),
             YoutubeContentType::Playlist => {
                 let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
                     Ok(urls) => urls,
@@ -400,7 +400,7 @@ impl DownloadIdentifierParam {
                     }
                 };
 
-                Ok(DownloadIdentifier::YouTubePlaylist {
+                Ok(DownloadIdentifier::YoutubePlaylist {
                     playlist_url: url,
                     video_urls: urls,
                 })

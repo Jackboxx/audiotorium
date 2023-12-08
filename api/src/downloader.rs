@@ -33,10 +33,10 @@ pub struct AudioDownloader {
 
 #[derive(Debug, Clone, TS)]
 pub enum DownloadIdentifier {
-    YouTubeVideo {
+    YoutubeVideo {
         url: String,
     },
-    YouTubePlaylist {
+    YoutubePlaylist {
         playlist_url: String,
         video_urls: Vec<String>,
     },
@@ -46,10 +46,10 @@ pub enum DownloadIdentifier {
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum DownloadInfo {
-    YouTubeVideo {
+    YoutubeVideo {
         url: String,
     },
-    YouTubePlaylist {
+    YoutubePlaylist {
         playlist_url: String,
         video_urls: Vec<String>,
     },
@@ -58,8 +58,8 @@ pub enum DownloadInfo {
 impl std::hash::Hash for DownloadInfo {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            Self::YouTubeVideo { url } => url.hash(state),
-            Self::YouTubePlaylist { playlist_url, .. } => playlist_url.hash(state),
+            Self::YoutubeVideo { url } => url.hash(state),
+            Self::YoutubePlaylist { playlist_url, .. } => playlist_url.hash(state),
         };
     }
 }
@@ -67,12 +67,12 @@ impl std::hash::Hash for DownloadInfo {
 impl PartialEq for DownloadInfo {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (DownloadInfo::YouTubeVideo { url }, DownloadInfo::YouTubeVideo { url: url_other }) => {
+            (DownloadInfo::YoutubeVideo { url }, DownloadInfo::YoutubeVideo { url: url_other }) => {
                 url.eq(url_other)
             }
             (
-                DownloadInfo::YouTubePlaylist { playlist_url, .. },
-                DownloadInfo::YouTubePlaylist {
+                DownloadInfo::YoutubePlaylist { playlist_url, .. },
+                DownloadInfo::YoutubePlaylist {
                     playlist_url: playlist_url_other,
                     ..
                 },
@@ -85,11 +85,11 @@ impl PartialEq for DownloadInfo {
 impl From<DownloadIdentifier> for DownloadInfo {
     fn from(value: DownloadIdentifier) -> Self {
         match value {
-            DownloadIdentifier::YouTubeVideo { url } => DownloadInfo::YouTubeVideo { url },
-            DownloadIdentifier::YouTubePlaylist {
+            DownloadIdentifier::YoutubeVideo { url } => DownloadInfo::YoutubeVideo { url },
+            DownloadIdentifier::YoutubePlaylist {
                 playlist_url,
                 video_urls,
-            } => DownloadInfo::YouTubePlaylist {
+            } => DownloadInfo::YoutubePlaylist {
                 playlist_url,
                 video_urls,
             },
@@ -132,13 +132,13 @@ impl AudioDownloader {
 impl DownloadIdentifier {
     pub fn uid(&self) -> String {
         match self {
-            Self::YouTubeVideo { url, .. } => {
+            Self::YoutubeVideo { url, .. } => {
                 let prefix = "youtube_audio_";
                 let hex_url = hex::encode(url);
 
                 format!("{prefix}{hex_url}")
             }
-            Self::YouTubePlaylist { playlist_url, .. } => {
+            Self::YoutubePlaylist { playlist_url, .. } => {
                 let prefix = "youtube_audio_playlist_";
                 let hex_url = hex::encode(playlist_url);
 
@@ -149,8 +149,8 @@ impl DownloadIdentifier {
 
     pub fn url(&self) -> &str {
         match self {
-            Self::YouTubeVideo { url } => &url,
-            Self::YouTubePlaylist { playlist_url, .. } => &playlist_url,
+            Self::YoutubeVideo { url } => &url,
+            Self::YoutubePlaylist { playlist_url, .. } => &playlist_url,
         }
     }
 
@@ -215,18 +215,17 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
         log::info!("download for {identifier:?} has started");
 
         match identifier {
-            DownloadIdentifier::YouTubeVideo { .. } => {
+            DownloadIdentifier::YoutubeVideo { .. } => {
                 process_single_video(pool, &addr, identifier).await;
             }
-            DownloadIdentifier::YouTubePlaylist {
+            DownloadIdentifier::YoutubePlaylist {
                 playlist_url,
                 video_urls,
             } => {
                 // TODO
-                // - detect videos in playlist
                 // - add db structure for playlists
+                // - detect videos in playlist
                 // - update playlist table with info
-                // - handle individual video download failed
 
                 let (videos_to_process, videos_for_next_batch) =
                     if MAX_CONSECUTIVE_BATCHES > video_urls.len() {
@@ -238,8 +237,8 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                 for url in videos_to_process.to_owned() {
                     let tx = pool.begin().await.unwrap();
 
-                    let identifier = DownloadIdentifier::YouTubeVideo { url: url.clone() };
-                    let info = DownloadInfo::YouTubeVideo { url: url.clone() };
+                    let identifier = DownloadIdentifier::YoutubeVideo { url: url.clone() };
+                    let info = DownloadInfo::YoutubeVideo { url: url.clone() };
 
                     let result = match download_youtube(&identifier, tx).await {
                         Ok(metadata) => Ok((info, metadata, identifier.to_path_with_ext())),
@@ -262,21 +261,21 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                 if videos_for_next_batch.is_empty() {
                     addr.do_send(NotifyDownloadUpdate {
                         result: DownloadUpdate::BatchUpdated {
-                            batch: DownloadInfo::YouTubePlaylist {
+                            batch: DownloadInfo::YoutubePlaylist {
                                 playlist_url,
                                 video_urls: vec![],
                             },
                         },
                     });
                 } else {
-                    let next_batch = DownloadIdentifier::YouTubePlaylist {
+                    let next_batch = DownloadIdentifier::YoutubePlaylist {
                         playlist_url: playlist_url.clone(),
                         video_urls: videos_for_next_batch.to_vec(),
                     };
 
                     addr.do_send(NotifyDownloadUpdate {
                         result: DownloadUpdate::BatchUpdated {
-                            batch: DownloadInfo::YouTubePlaylist {
+                            batch: DownloadInfo::YoutubePlaylist {
                                 playlist_url,
                                 video_urls: videos_for_next_batch.to_vec(),
                             },
@@ -301,7 +300,7 @@ async fn process_single_video(
     let tx = pool.begin().await.unwrap();
 
     let url = identifier.url();
-    let info = DownloadInfo::YouTubeVideo {
+    let info = DownloadInfo::YoutubeVideo {
         url: url.to_owned(),
     };
 
@@ -389,15 +388,15 @@ mod tests {
 
     #[test]
     fn test_download_info_eq() {
-        let info_1 = DownloadInfo::YouTubePlaylist {
+        let info_1 = DownloadInfo::YoutubePlaylist {
             playlist_url: "123".to_owned(),
             video_urls: vec![],
         };
-        let info_2 = DownloadInfo::YouTubePlaylist {
+        let info_2 = DownloadInfo::YoutubePlaylist {
             playlist_url: "123".to_owned(),
             video_urls: vec!["ignored".to_owned()],
         };
-        let info_3 = DownloadInfo::YouTubePlaylist {
+        let info_3 = DownloadInfo::YoutubePlaylist {
             playlist_url: "13".to_owned(),
             video_urls: vec!["ignored".to_owned()],
         };

@@ -43,7 +43,7 @@ pub enum AudioNodeCommand {
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum DownloadIdentifierParam {
-    YouTube { url: String },
+    Youtube { url: String },
 }
 
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]
