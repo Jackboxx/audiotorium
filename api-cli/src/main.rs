@@ -9,10 +9,10 @@ use websocket::{ClientBuilder, OwnedMessage};
 use audio_manager_api::{
     audio_playback::audio_player::LoopBounds,
     commands::node_commands::{
-        AddQueueItemParams, AudioNodeCommand, LoopQueueParams, MoveQueueItemParams,
-        PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams, SetAudioVolumeParams,
+        AddQueueItemParams, AudioNodeCommand, DownloadIdentifierParam, LoopQueueParams,
+        MoveQueueItemParams, PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
+        SetAudioVolumeParams,
     },
-    downloader::DownloadIdentifier,
     streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
 use clap::{Parser, Subcommand};
@@ -179,7 +179,7 @@ impl From<CliNodeCommand> for AudioNodeCommand {
         match value {
             CliNodeCommand::AddQueueItem { url } => {
                 AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                    identifier: DownloadIdentifier::YouTube { url },
+                    identifier: DownloadIdentifierParam::YouTube { url },
                 })
             }
             CliNodeCommand::RemoveQueueItem { index } => {

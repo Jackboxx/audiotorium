@@ -1,4 +1,7 @@
 use crate::{
+    audio_hosts::youtube::{
+        playlist::get_playlist_video_urls, youtube_content_type, YoutubeContentType,
+    },
     audio_playback::{
         audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem},
         audio_player::{
@@ -7,17 +10,19 @@ use crate::{
     },
     brain::brain_server::AudioBrain,
     commands::node_commands::{
-        AddQueueItemParams, AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams,
+        AddQueueItemParams, AudioNodeCommand, DownloadIdentifierParam, MoveQueueItemParams,
+        RemoveQueueItemParams,
     },
     db_pool,
     downloader::{
-        AudioDownloader, DownloadAudioRequest, DownloadIdentifier, NotifyDownloadFinished,
+        AudioDownloader, DownloadAudioRequest, DownloadIdentifier, DownloadInfo, DownloadUpdate,
+        NotifyDownloadUpdate,
     },
     streams::node_streams::{
-        AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, DownloadInfo,
+        AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, RunningDownloadInfo,
     },
     utils::log_msg_received,
-    ErrorResponse, IntoErrResp,
+    yt_api_key, ErrorResponse, IntoErrResp,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -28,6 +33,7 @@ use actix::{
     Actor, ActorFutureExt, Addr, AsyncContext, Context, Handler, Message, MessageResponse,
     Recipient, ResponseActFuture, WrapFuture,
 };
+use anyhow::anyhow;
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -43,8 +49,8 @@ pub struct AudioNode {
     pub(super) current_processor_info: ProcessorInfo,
     pub(super) player: AudioPlayer<PathBuf>,
     pub(super) downloader_addr: Addr<AudioDownloader>,
-    pub(super) active_downloads: HashSet<DownloadIdentifier>,
-    pub(super) failed_downloads: HashMap<DownloadIdentifier, ErrorResponse>,
+    pub(super) active_downloads: HashSet<DownloadInfo>,
+    pub(super) failed_downloads: HashMap<DownloadInfo, ErrorResponse>,
     pub(super) server_addr: Addr<AudioBrain>,
     pub(super) sessions: HashMap<usize, Addr<AudioNodeSession>>,
     pub(super) health: AudioNodeHealth,
@@ -163,7 +169,7 @@ impl Handler<NodeConnectMessage> for AudioNode {
             downloads: msg
                 .wanted_info
                 .contains(&AudioNodeInfoStreamType::Download)
-                .then_some(DownloadInfo {
+                .then_some(RunningDownloadInfo {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone().into_iter().collect(),
                 }),
@@ -195,18 +201,38 @@ impl Handler<NodeDisconnectMessage> for AudioNode {
     }
 }
 
-impl Handler<NotifyDownloadFinished> for AudioNode {
+impl Handler<NotifyDownloadUpdate> for AudioNode {
     type Result = ();
 
-    fn handle(&mut self, msg: NotifyDownloadFinished, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NotifyDownloadUpdate, _ctx: &mut Self::Context) -> Self::Result {
         match msg.result {
-            Ok((identifier, metadata)) => {
-                self.active_downloads.remove(&identifier);
-                self.failed_downloads.remove(&identifier);
+            DownloadUpdate::Queued(info) => {
+                self.active_downloads.insert(info);
+
+                let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
+                });
+
+                self.multicast(msg);
+            }
+            DownloadUpdate::FailedToQueue((info, err_resp)) => {
+                self.failed_downloads.insert(info, err_resp);
+
+                let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
+                });
+
+                self.multicast(msg);
+            }
+            DownloadUpdate::SingleFinished(Ok((info, metadata, path))) => {
+                self.active_downloads.remove(&info);
+                self.failed_downloads.remove(&info);
 
                 let item = AudioPlayerQueueItem {
                     metadata,
-                    locator: identifier.to_path_with_ext(),
+                    locator: path,
                 };
 
                 if let Err(err) = self.player.push_to_queue(item) {
@@ -214,7 +240,7 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                     return;
                 };
 
-                let download_fin_msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
+                let download_fin_msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone().into_iter().collect(),
                 });
@@ -224,17 +250,36 @@ impl Handler<NotifyDownloadFinished> for AudioNode {
                     AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(self.player.queue()));
                 self.multicast(updated_queue_msg);
             }
-            Err((identifier, err_resp)) => {
-                self.active_downloads.remove(&identifier);
-                self.failed_downloads.insert(identifier, err_resp);
+            DownloadUpdate::SingleFinished(Err((info, err_resp))) => {
+                self.active_downloads.remove(&info);
+                self.failed_downloads.insert(info, err_resp);
 
-                let msg = AudioNodeInfoStreamMessage::Download(DownloadInfo {
+                let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
                     active: self.active_downloads.clone().into_iter().collect(),
                     failed: self.failed_downloads.clone().into_iter().collect(),
                 });
 
                 self.multicast(msg);
             }
+            DownloadUpdate::BatchUpdated { batch } => match batch {
+                DownloadInfo::YouTubePlaylist { ref video_urls, .. } => {
+                    if video_urls.is_empty() {
+                        self.active_downloads.remove(&batch);
+                    } else {
+                        self.active_downloads.replace(batch);
+                    };
+
+                    let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
+                        active: self.active_downloads.clone().into_iter().collect(),
+                        failed: self.failed_downloads.clone().into_iter().collect(),
+                    });
+
+                    self.multicast(msg);
+                }
+                _ => {
+                    log::warn!("received a batch updated that wasn't a valid batch, valid batches are [youtube-playlist]");
+                }
+            },
         }
     }
 }
@@ -334,36 +379,71 @@ enum AsyncAudioNodeCommand {
     AddQueueItem(AddQueueItemParams),
 }
 
+impl DownloadIdentifierParam {
+    async fn to_internal_identifier(self) -> anyhow::Result<DownloadIdentifier> {
+        let url = match self {
+            Self::YouTube { url } => url,
+        };
+
+        let content_type = youtube_content_type(url.as_str());
+
+        match content_type {
+            YoutubeContentType::Video => Ok(DownloadIdentifier::YouTubeVideo { url }),
+            YoutubeContentType::Playlist => {
+                let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
+                    Ok(urls) => urls,
+                    Err(err) => {
+                        log::error!("failed to get playlist information for youtube playlist, URL: {url}, ERROR: {err}");
+                        return Err(anyhow!(
+                            "failed to get playlist information for youtube playlist, URL: {url}"
+                        ));
+                    }
+                };
+
+                Ok(DownloadIdentifier::YouTubePlaylist {
+                    playlist_url: url,
+                    video_urls: urls,
+                })
+            }
+            YoutubeContentType::Invalid => Err(anyhow!("invalid youtube video url, URL: {url}")),
+        }
+    }
+}
+
 impl Handler<AsyncAudioNodeCommand> for AudioNode {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             AsyncAudioNodeCommand::AddQueueItem(params) => {
-                let AddQueueItemParams { identifier } = params;
-                let uid = identifier.uid();
 
                 Box::pin(async move {
-                    sqlx::query_as!(
+                let identifier = params.identifier.to_internal_identifier().await.unwrap();
+                let uid = identifier.uid();
+
+                    (identifier, sqlx::query_as!(
                 AudioMetaData,
                 "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
                 uid
                     )
                     .fetch_optional(db_pool())
                     .await
-                    .into_err_resp("")
+                    .into_err_resp(""))
 
                 }.into_actor(self).map(move |res, act, ctx| {
-                    match res {
+                    let (identifier, query_res) = res;
+                    match query_res {
                         Ok(metadata) => {
                             let msg = handle_add_queue_item(
                                 metadata,
-                                identifier.clone(),
+                                identifier,
                                 act,
                                 ctx.address().recipient(),
                             );
 
-                            act.multicast_result(msg);
+                            if let Some(msg) = msg  {
+                                act.multicast_result(msg);
+                            }
                         },
                         Err(err_resp) => {act.multicast(err_resp);}
                     }
@@ -378,36 +458,29 @@ fn handle_add_queue_item(
     metadata: Option<AudioMetaData>,
     identifier: DownloadIdentifier,
     node: &mut AudioNode,
-    node_addr: Recipient<NotifyDownloadFinished>,
-) -> Result<AudioNodeInfoStreamMessage, ErrorResponse> {
+    node_addr: Recipient<NotifyDownloadUpdate>,
+) -> Option<Result<AudioNodeInfoStreamMessage, ErrorResponse>> {
     if let Some(metadata) = metadata {
         if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
             metadata,
             locator: identifier.to_path_with_ext(),
         }) {
             log::error!("failed to auto play first song");
-            return Err(ErrorResponse {
+            return Some(Err(ErrorResponse {
                 error: format!("failed to auto play first song, ERROR: {err}"),
-            });
+            }));
         }
     } else {
-        let download_request = node.downloader_addr.try_send(DownloadAudioRequest {
+        node.downloader_addr.do_send(DownloadAudioRequest {
             addr: node_addr,
             identifier: identifier.clone(),
         });
 
-        if download_request.is_ok() {
-            node.active_downloads.insert(identifier);
-
-            return Ok(AudioNodeInfoStreamMessage::Download(DownloadInfo {
-                active: node.active_downloads.clone().into_iter().collect(),
-                failed: node.failed_downloads.clone().into_iter().collect(),
-            }));
-        }
+        return None;
     }
 
-    Ok(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
-        node.player.queue(),
+    Some(Ok(AudioNodeInfoStreamMessage::Queue(
+        extract_queue_metadata(node.player.queue()),
     )))
 }
 

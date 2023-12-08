@@ -1,12 +1,6 @@
 use crate::{
-    audio_hosts::youtube::{
-        playlist::get_playlist_video_urls, video::get_video_metadata, youtube_content_type,
-        YoutubeContentType,
-    },
-    audio_playback::audio_item::AudioMetaData,
-    db_pool,
-    utils::log_msg_received,
-    yt_api_key, ErrorResponse, IntoErrResp,
+    audio_hosts::youtube::video::get_video_metadata, audio_playback::audio_item::AudioMetaData,
+    db_pool, utils::log_msg_received, yt_api_key, ErrorResponse, IntoErrResp,
 };
 use std::{
     collections::VecDeque,
@@ -19,40 +13,111 @@ use std::{
 use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::PgPool;
 use tokio::sync::Mutex;
 use ts_rs::TS;
 
 #[cfg(not(debug_assertions))]
-const AUDIO_DIR: &str = "audio";
+pub const AUDIO_DIR: &str = "audio";
 
 #[cfg(debug_assertions)]
-const AUDIO_DIR: &str = "audio-dev";
+pub const AUDIO_DIR: &str = "audio-dev";
+
+const MAX_CONSECUTIVE_BATCHES: usize = 10;
 
 pub struct AudioDownloader {
     download_thread: Arbiter,
     queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, TS)]
+pub enum DownloadIdentifier {
+    YouTubeVideo {
+        url: String,
+    },
+    YouTubePlaylist {
+        playlist_url: String,
+        video_urls: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Eq, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
-pub enum DownloadIdentifier {
-    YouTube { url: String },
+pub enum DownloadInfo {
+    YouTubeVideo {
+        url: String,
+    },
+    YouTubePlaylist {
+        playlist_url: String,
+        video_urls: Vec<String>,
+    },
+}
+
+impl std::hash::Hash for DownloadInfo {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::YouTubeVideo { url } => url.hash(state),
+            Self::YouTubePlaylist { playlist_url, .. } => playlist_url.hash(state),
+        };
+    }
+}
+
+impl PartialEq for DownloadInfo {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DownloadInfo::YouTubeVideo { url }, DownloadInfo::YouTubeVideo { url: url_other }) => {
+                url.eq(url_other)
+            }
+            (
+                DownloadInfo::YouTubePlaylist { playlist_url, .. },
+                DownloadInfo::YouTubePlaylist {
+                    playlist_url: playlist_url_other,
+                    ..
+                },
+            ) => playlist_url.eq(playlist_url_other),
+            _ => false,
+        }
+    }
+}
+
+impl From<DownloadIdentifier> for DownloadInfo {
+    fn from(value: DownloadIdentifier) -> Self {
+        match value {
+            DownloadIdentifier::YouTubeVideo { url } => DownloadInfo::YouTubeVideo { url },
+            DownloadIdentifier::YouTubePlaylist {
+                playlist_url,
+                video_urls,
+            } => DownloadInfo::YouTubePlaylist {
+                playlist_url,
+                video_urls,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct DownloadAudioRequest {
+    pub addr: Recipient<NotifyDownloadUpdate>,
+    pub identifier: DownloadIdentifier,
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct NotifyDownloadFinished {
-    pub result: Result<(DownloadIdentifier, AudioMetaData), (DownloadIdentifier, ErrorResponse)>,
+pub struct NotifyDownloadUpdate {
+    pub result: DownloadUpdate,
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "Result<(), ErrorResponse>")]
-pub struct DownloadAudioRequest {
-    pub addr: Recipient<NotifyDownloadFinished>,
-    pub identifier: DownloadIdentifier,
+type SingleDownloadFinished =
+    Result<(DownloadInfo, AudioMetaData, PathBuf), (DownloadInfo, ErrorResponse)>;
+
+pub enum DownloadUpdate {
+    Queued(DownloadInfo),
+    FailedToQueue((DownloadInfo, ErrorResponse)),
+    SingleFinished(SingleDownloadFinished),
+    BatchUpdated { batch: DownloadInfo },
 }
 
 impl AudioDownloader {
@@ -67,12 +132,25 @@ impl AudioDownloader {
 impl DownloadIdentifier {
     pub fn uid(&self) -> String {
         match self {
-            Self::YouTube { url } => {
+            Self::YouTubeVideo { url, .. } => {
                 let prefix = "youtube_audio_";
                 let hex_url = hex::encode(url);
 
                 format!("{prefix}{hex_url}")
             }
+            Self::YouTubePlaylist { playlist_url, .. } => {
+                let prefix = "youtube_audio_playlist_";
+                let hex_url = hex::encode(playlist_url);
+
+                format!("{prefix}{hex_url}")
+            }
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        match self {
+            Self::YouTubeVideo { url } => &url,
+            Self::YouTubePlaylist { playlist_url, .. } => &playlist_url,
         }
     }
 
@@ -103,17 +181,27 @@ impl Actor for AudioDownloader {
 }
 
 impl Handler<DownloadAudioRequest> for AudioDownloader {
-    type Result = Result<(), ErrorResponse>;
+    type Result = ();
 
     fn handle(&mut self, msg: DownloadAudioRequest, _ctx: &mut Self::Context) -> Self::Result {
         log_msg_received(&self, &msg);
 
-        self.queue
-            .try_lock()
-            .into_err_resp("failed to add audio to download queue\nERROR:")?
-            .push_back(msg);
-
-        Ok(())
+        match self.queue.try_lock() {
+            Ok(mut queue) => {
+                let info = msg.identifier.clone().into();
+                msg.addr.do_send(NotifyDownloadUpdate {
+                    result: DownloadUpdate::Queued(info),
+                });
+                queue.push_back(msg);
+            }
+            Err(err) => {
+                let err_resp = err.into_err_resp("failed to add audio to download queue\nERROR:");
+                let info = msg.identifier.clone().into();
+                msg.addr.do_send(NotifyDownloadUpdate {
+                    result: DownloadUpdate::FailedToQueue((info, err_resp)),
+                });
+            }
+        }
     }
 }
 
@@ -121,107 +209,130 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
     let mut queue = queue.lock().await;
 
     if let Some(req) = queue.pop_front() {
-        let DownloadAudioRequest { addr, identifier } = req;
+        let DownloadAudioRequest {
+            addr, identifier, ..
+        } = req;
         log::info!("download for {identifier:?} has started");
 
-        match &identifier {
-            DownloadIdentifier::YouTube { url } => {
-                let content_type = youtube_content_type(url.as_str());
-                match content_type {
-                    YoutubeContentType::Video => {
-                        process_video(pool, &addr, identifier.clone(), url).await
-                    }
-                    YoutubeContentType::Playlist => {
-                        process_playlist(&mut queue, &addr, identifier.clone(), url).await
-                    }
-                    YoutubeContentType::Invalid => {
-                        log::error!("invalid youtube video url, URL: {url}");
-                        addr.do_send(NotifyDownloadFinished {
-                            result: Err((
-                                identifier,
+        match identifier {
+            DownloadIdentifier::YouTubeVideo { .. } => {
+                process_single_video(pool, &addr, identifier).await;
+            }
+            DownloadIdentifier::YouTubePlaylist {
+                playlist_url,
+                video_urls,
+            } => {
+                // TODO
+                // - detect videos in playlist
+                // - add db structure for playlists
+                // - update playlist table with info
+                // - handle individual video download failed
+
+                let (videos_to_process, videos_for_next_batch) =
+                    if MAX_CONSECUTIVE_BATCHES > video_urls.len() {
+                        (video_urls.as_slice(), Default::default())
+                    } else {
+                        video_urls.split_at(MAX_CONSECUTIVE_BATCHES)
+                    };
+
+                for url in videos_to_process.to_owned() {
+                    let tx = pool.begin().await.unwrap();
+
+                    let identifier = DownloadIdentifier::YouTubeVideo { url: url.clone() };
+                    let info = DownloadInfo::YouTubeVideo { url: url.clone() };
+
+                    let result = match download_youtube(&identifier, tx).await {
+                        Ok(metadata) => Ok((info, metadata, identifier.to_path_with_ext())),
+                        Err(err) => {
+                            log::error!("failed to download video, URL: {url}, ERROR: {err}");
+                            Err((
+                                info,
                                 ErrorResponse {
-                                    error: "invalid youtube video url".to_owned(),
+                                    error: format!("failed to download video with url: {url}"),
                                 },
-                            )),
-                        });
-                    }
+                            ))
+                        }
+                    };
+
+                    addr.do_send(NotifyDownloadUpdate {
+                        result: DownloadUpdate::SingleFinished(result),
+                    });
+                }
+
+                if videos_for_next_batch.is_empty() {
+                    addr.do_send(NotifyDownloadUpdate {
+                        result: DownloadUpdate::BatchUpdated {
+                            batch: DownloadInfo::YouTubePlaylist {
+                                playlist_url,
+                                video_urls: vec![],
+                            },
+                        },
+                    });
+                } else {
+                    let next_batch = DownloadIdentifier::YouTubePlaylist {
+                        playlist_url: playlist_url.clone(),
+                        video_urls: videos_for_next_batch.to_vec(),
+                    };
+
+                    addr.do_send(NotifyDownloadUpdate {
+                        result: DownloadUpdate::BatchUpdated {
+                            batch: DownloadInfo::YouTubePlaylist {
+                                playlist_url,
+                                video_urls: videos_for_next_batch.to_vec(),
+                            },
+                        },
+                    });
+
+                    queue.push_back(DownloadAudioRequest {
+                        addr,
+                        identifier: next_batch,
+                    });
                 }
             }
         }
     }
 }
 
-async fn process_video(
+async fn process_single_video(
     pool: &PgPool,
-    addr: &Recipient<NotifyDownloadFinished>,
+    addr: &Recipient<NotifyDownloadUpdate>,
     identifier: DownloadIdentifier,
-    url: &str,
 ) {
     let tx = pool.begin().await.unwrap();
-    let metadata = match download_youtube(&identifier, url, tx).await {
+
+    let url = identifier.url();
+    let info = DownloadInfo::YouTubeVideo {
+        url: url.to_owned(),
+    };
+
+    let metadata = match download_youtube(&identifier, tx).await {
         Ok(metadata) => metadata,
         Err(err) => {
             log::error!("failed to download video, URL: {url}, ERROR: {err}");
-            addr.do_send(NotifyDownloadFinished {
-                result: Err((
-                    identifier,
+            addr.do_send(NotifyDownloadUpdate {
+                result: DownloadUpdate::SingleFinished(Err((
+                    info,
                     ErrorResponse {
                         error: format!("failed to download video with url: {url}"),
                     },
-                )),
+                ))),
             });
             return;
         }
     };
 
-    addr.do_send(NotifyDownloadFinished {
-        result: Ok((identifier, metadata)),
+    addr.do_send(NotifyDownloadUpdate {
+        result: DownloadUpdate::SingleFinished(Ok((info, metadata, identifier.to_path_with_ext()))),
     });
-}
-
-async fn process_playlist(
-    queue: &mut VecDeque<DownloadAudioRequest>,
-    addr: &Recipient<NotifyDownloadFinished>,
-    identifier: DownloadIdentifier,
-    url: &str,
-) {
-    let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
-        Ok(urls) => urls,
-        Err(err) => {
-            log::error!(
-                "failed to get playlist information for youtube playlist, URL: {url}, ERROR: {err}"
-            );
-            addr.do_send(NotifyDownloadFinished {
-                result: Err((
-                    identifier,
-                    ErrorResponse {
-                        error: format!(
-                            "failed to get playlist information for youtube playlist, URL: {url}"
-                        ),
-                    },
-                )),
-            });
-            return;
-        }
-    };
-
-    for url in urls {
-        let identifier = DownloadIdentifier::YouTube { url };
-        let request = DownloadAudioRequest {
-            identifier,
-            addr: addr.clone(),
-        };
-
-        queue.push_back(request);
-    }
 }
 
 async fn download_youtube(
     identifier: &DownloadIdentifier,
-    url: &str,
     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> anyhow::Result<AudioMetaData> {
-    let metadata: AudioMetaData = get_video_metadata(url, yt_api_key()).await?.into();
+    let metadata: AudioMetaData = get_video_metadata(identifier.url(), yt_api_key())
+        .await?
+        .into();
 
     let key = identifier.uid();
     sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",
@@ -235,7 +346,7 @@ async fn download_youtube(
                 .await?;
 
     let path = identifier.to_path();
-    if let Err(err) = download_youtube_audio(url, &path.to_string_lossy()) {
+    if let Err(err) = download_youtube_audio(identifier.url(), &path.to_string_lossy()) {
         if let Err(rollback_err) = tx.rollback().await {
             return Err(anyhow!("ERROR 1: {err}\nERROR 2: {rollback_err}"));
         }
@@ -268,4 +379,34 @@ fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Result<
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn test_download_info_eq() {
+        let info_1 = DownloadInfo::YouTubePlaylist {
+            playlist_url: "123".to_owned(),
+            video_urls: vec![],
+        };
+        let info_2 = DownloadInfo::YouTubePlaylist {
+            playlist_url: "123".to_owned(),
+            video_urls: vec!["ignored".to_owned()],
+        };
+        let info_3 = DownloadInfo::YouTubePlaylist {
+            playlist_url: "13".to_owned(),
+            video_urls: vec!["ignored".to_owned()],
+        };
+
+        let mut set: HashSet<DownloadInfo> = Default::default();
+
+        assert_eq!(set.insert(info_1), true);
+        assert_eq!(set.insert(info_2), false);
+        assert_eq!(set.insert(info_3), true);
+        assert_eq!(set.len(), 2)
+    }
 }

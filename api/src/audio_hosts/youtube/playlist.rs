@@ -7,7 +7,7 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
         return Err(anyhow!("faild to download youtube playlist {url}"));
     };
 
-    let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId={playlist_id}&key={api_key}");
+    let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId={playlist_id}&key={api_key}");
     let resp_text = reqwest::get(api_url).await?.text().await?;
     log::info!("{resp_text}");
 

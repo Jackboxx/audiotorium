@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_player::LoopBounds, downloader::DownloadIdentifier,
-    utils::get_node_by_source_name, AppData, ErrorResponse,
+    audio_playback::audio_player::LoopBounds, utils::get_node_by_source_name, AppData,
+    ErrorResponse,
 };
 
 /// Commands a client can send to an audio node
@@ -39,11 +39,18 @@ pub enum AudioNodeCommand {
     LoopQueue(LoopQueueParams),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export, export_to = "../app/src/api-types/")]
+pub enum DownloadIdentifierParam {
+    YouTube { url: String },
+}
+
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct AddQueueItemParams {
-    pub identifier: DownloadIdentifier,
+    pub identifier: DownloadIdentifierParam,
 }
 
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]

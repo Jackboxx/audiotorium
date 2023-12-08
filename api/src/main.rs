@@ -1,13 +1,13 @@
-use std::env;
+use std::{env, fs};
 
 use actix::Actor;
 use actix_rt::Arbiter;
 use audio_manager_api::brain::brain_server::AudioBrain;
 use audio_manager_api::commands::node_commands::receive_node_cmd;
-use audio_manager_api::downloader::AudioDownloader;
+use audio_manager_api::downloader::{AudioDownloader, AUDIO_DIR};
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
-use audio_manager_api::{AppData, POOL, YOUTUBE_API_KEY};
+use audio_manager_api::{db_pool, AppData, POOL, YOUTUBE_API_KEY};
 use log::LevelFilter;
 
 use actix_cors::Cors;
@@ -62,6 +62,8 @@ async fn main() -> std::io::Result<()> {
 
     let data = Data::new(AppData::new(server_addr));
 
+    clear_dev_db().await;
+
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
@@ -78,4 +80,27 @@ async fn main() -> std::io::Result<()> {
     .bind((addr, 50051))?
     .run()
     .await
+}
+
+async fn clear_dev_db() {
+    let should_clear = env::args().any(|str| str == "-c");
+
+    if should_clear && cfg!(debug_assertions) {
+        println!(
+            "
+============================
+||                        ||
+||  REMOVING DEV DATABASE ||
+||                        ||
+============================"
+        );
+
+        sqlx::query!("DELETE FROM audio_metadata")
+            .execute(db_pool())
+            .await
+            .unwrap();
+
+        fs::remove_dir_all(AUDIO_DIR).unwrap();
+        fs::create_dir(AUDIO_DIR).unwrap();
+    }
 }

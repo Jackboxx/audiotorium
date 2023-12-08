@@ -15,7 +15,7 @@ use crate::{
         audio_item::AudioMetaData,
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
-    downloader::DownloadIdentifier,
+    downloader::DownloadInfo,
     node::{health::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
@@ -40,16 +40,16 @@ pub enum AudioNodeInfoStreamMessage {
     // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
     Queue(Vec<AudioMetaData>),
     Health(AudioNodeHealth),
-    Download(DownloadInfo),
+    Download(RunningDownloadInfo),
     AudioStateInfo(AudioStateInfo),
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
-pub struct DownloadInfo {
-    pub active: Vec<DownloadIdentifier>,
-    pub failed: Vec<(DownloadIdentifier, ErrorResponse)>,
+pub struct RunningDownloadInfo {
+    pub active: Vec<DownloadInfo>,
+    pub failed: Vec<(DownloadInfo, ErrorResponse)>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
