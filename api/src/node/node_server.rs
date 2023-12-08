@@ -16,7 +16,7 @@ use crate::{
     db_pool,
     downloader::{
         AudioDownloader, DownloadAudioRequest, DownloadIdentifier, DownloadInfo, DownloadUpdate,
-        NotifyDownloadUpdate,
+        NotifyDownloadUpdate, YoutubePlaylistDownloadInfo,
     },
     streams::node_streams::{
         AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, RunningDownloadInfo,
@@ -400,83 +400,157 @@ impl DownloadIdentifierParam {
                     }
                 };
 
-                Ok(DownloadIdentifier::YoutubePlaylist {
-                    playlist_url: url,
-                    video_urls: urls,
-                })
+                Ok(DownloadIdentifier::YoutubePlaylist(
+                    YoutubePlaylistDownloadInfo {
+                        playlist_url: url,
+                        video_urls: urls,
+                    },
+                ))
             }
             YoutubeContentType::Invalid => Err(anyhow!("invalid youtube video url, URL: {url}")),
         }
     }
 }
 
+enum MetadataExists {
+    Found {
+        metadata: AudioMetaData,
+        path: PathBuf,
+    },
+    NotFound {
+        url: String,
+    },
+}
+
 impl Handler<AsyncAudioNodeCommand> for AudioNode {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
+        enum MetadataQueryResult {
+            Single(MetadataExists),
+            Many(Vec<Option<AudioMetaData>>),
+        }
+
         match msg {
             AsyncAudioNodeCommand::AddQueueItem(params) => {
+                Box::pin(
+                    async move {
+                        let identifier = params.identifier.to_internal_identifier().await.unwrap();
+                        let uid = identifier.uid();
 
-                Box::pin(async move {
-                let identifier = params.identifier.to_internal_identifier().await.unwrap();
-                let uid = identifier.uid();
+                        // TODO: differentiate between video and playlist
+                        //       - video:       use existing
+                        //       - playlist:
+                        //          1. query if playlist exists
+                        //          2. create playlist table if not
+                        //          3. create links to metadata for existing metadata
+                        //          4. make request for remaining metadata
 
-                    (identifier, sqlx::query_as!(
-                AudioMetaData,
-                "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
-                uid
-                    )
-                    .fetch_optional(db_pool())
-                    .await
-                    .into_err_resp(""))
+                        let query_res: Result<MetadataQueryResult, ErrorResponse> =
+                            match identifier {
+                                DownloadIdentifier::YoutubeVideo { .. } => {
+                                    get_audio_metadata_from_db(&uid).await.map(|res| {
+                                        MetadataQueryResult::Single(
+                                            res.map(|md| MetadataExists::Found {
+                                                metadata: md,
+                                                path: identifier.to_path_with_ext(),
+                                            })
+                                            .unwrap_or(MetadataExists::NotFound {
+                                                url: identifier.url().to_owned(),
+                                            }),
+                                        )
+                                    })
+                                }
+                                DownloadIdentifier::YoutubePlaylist(
+                                    YoutubePlaylistDownloadInfo { ref video_urls, .. },
+                                ) => {
+                                    let mut metadata_list = Vec::with_capacity(video_urls.len());
+                                    for url in video_urls {
+                                        let audio_identifier = DownloadIdentifier::YoutubeVideo {
+                                            url: url.to_owned(),
+                                        };
 
-                }.into_actor(self).map(move |res, act, ctx| {
-                    let (identifier, query_res) = res;
-                    match query_res {
-                        Ok(metadata) => {
-                            let msg = handle_add_queue_item(
-                                metadata,
-                                identifier,
-                                act,
-                                ctx.address().recipient(),
-                            );
+                                        let metadata =
+                                            get_audio_metadata_from_db(&uid).await.unwrap();
+                                        metadata_list.push(metadata);
+                                    }
 
-                            if let Some(msg) = msg  {
-                                act.multicast_result(msg);
-                            }
-                        },
-                        Err(err_resp) => {act.multicast(err_resp);}
+                                    Ok(MetadataQueryResult::Many(metadata_list))
+                                }
+                            };
+
+                        query_res
                     }
+                    .into_actor(self)
+                    .map(move |res, act, ctx| {
+                        match res {
+                            Ok(MetadataQueryResult::Single(data)) => {
+                                let msg = handle_add_single_queue_item(
+                                    data,
+                                    act,
+                                    ctx.address().recipient(),
+                                );
 
-                }))
+                                if let Some(msg) = msg {
+                                    act.multicast_result(msg);
+                                }
+                            }
+                            Ok(MetadataQueryResult::Many(metadata_list)) => {
+                                // create playlist table if not exists
+
+                                // create playlist items for existing items if not exists
+
+                                // create new identifier with missing items & make download request
+
+                                // play found metadata
+                            }
+                            Err(err_resp) => {
+                                act.multicast(err_resp);
+                            }
+                        }
+                    }),
+                )
             } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
         }
     }
 }
 
-fn handle_add_queue_item(
-    metadata: Option<AudioMetaData>,
-    identifier: DownloadIdentifier,
+async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetaData>, ErrorResponse> {
+    sqlx::query_as!(
+        AudioMetaData,
+        "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
+        uid
+    )
+    .fetch_optional(db_pool())
+    .await
+    .into_err_resp("")
+}
+
+fn handle_add_single_queue_item(
+    data: MetadataExists,
     node: &mut AudioNode,
     node_addr: Recipient<NotifyDownloadUpdate>,
 ) -> Option<Result<AudioNodeInfoStreamMessage, ErrorResponse>> {
-    if let Some(metadata) = metadata {
-        if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-            metadata,
-            locator: identifier.to_path_with_ext(),
-        }) {
-            log::error!("failed to auto play first song");
-            return Some(Err(ErrorResponse {
-                error: format!("failed to auto play first song, ERROR: {err}"),
-            }));
+    match data {
+        MetadataExists::Found { metadata, path } => {
+            if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
+                metadata,
+                locator: path,
+            }) {
+                log::error!("failed to auto play first song");
+                return Some(Err(ErrorResponse {
+                    error: format!("failed to auto play first song, ERROR: {err}"),
+                }));
+            }
         }
-    } else {
-        node.downloader_addr.do_send(DownloadAudioRequest {
-            addr: node_addr,
-            identifier: identifier.clone(),
-        });
+        MetadataExists::NotFound { url } => {
+            node.downloader_addr.do_send(DownloadAudioRequest {
+                addr: node_addr,
+                identifier: DownloadIdentifier::YoutubeVideo { url },
+            });
 
-        return None;
+            return None;
+        }
     }
 
     Some(Ok(AudioNodeInfoStreamMessage::Queue(
