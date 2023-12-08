@@ -179,7 +179,7 @@ impl From<CliNodeCommand> for AudioNodeCommand {
         match value {
             CliNodeCommand::AddQueueItem { url } => {
                 AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                    identifier: DownloadIdentifierParam::YouTube { url },
+                    identifier: DownloadIdentifierParam::Youtube { url },
                 })
             }
             CliNodeCommand::RemoveQueueItem { index } => {
