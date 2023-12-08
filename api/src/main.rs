@@ -100,6 +100,11 @@ async fn clear_dev_db() {
             .await
             .unwrap();
 
+        sqlx::query!("DELETE FROM audio_playlist")
+            .execute(db_pool())
+            .await
+            .unwrap();
+
         fs::remove_dir_all(AUDIO_DIR).unwrap();
         fs::create_dir(AUDIO_DIR).unwrap();
     }
