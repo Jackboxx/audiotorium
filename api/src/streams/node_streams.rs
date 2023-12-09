@@ -15,7 +15,7 @@ use crate::{
         audio_item::AudioMetaData,
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
-    downloader::DownloadInfo,
+    downloader::info::DownloadInfo,
     node::{health::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,

@@ -15,8 +15,9 @@ use crate::{
     },
     db_pool,
     downloader::{
-        AudioDownloader, DownloadAudioRequest, DownloadIdentifier, DownloadInfo, DownloadUpdate,
-        NotifyDownloadUpdate, YoutubePlaylistDownloadInfo,
+        actor::{AudioDownloader, DownloadAudioRequest, DownloadUpdate, NotifyDownloadUpdate},
+        download_identifier::{DownloadRequiredInformation, YoutubePlaylistDownloadInfo},
+        info::DownloadInfo,
     },
     streams::node_streams::{
         AudioNodeInfoStreamMessage, AudioNodeInfoStreamType, AudioStateInfo, RunningDownloadInfo,
@@ -380,7 +381,7 @@ enum AsyncAudioNodeCommand {
 }
 
 impl DownloadIdentifierParam {
-    async fn to_internal_identifier(self) -> anyhow::Result<DownloadIdentifier> {
+    async fn to_internal_identifier(self) -> anyhow::Result<DownloadRequiredInformation> {
         let url = match self {
             Self::Youtube { url } => url,
         };
@@ -388,7 +389,7 @@ impl DownloadIdentifierParam {
         let content_type = youtube_content_type(url.as_str());
 
         match content_type {
-            YoutubeContentType::Video => Ok(DownloadIdentifier::YoutubeVideo { url }),
+            YoutubeContentType::Video => Ok(DownloadRequiredInformation::YoutubeVideo { url }),
             YoutubeContentType::Playlist => {
                 let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
                     Ok(urls) => urls,
@@ -400,7 +401,7 @@ impl DownloadIdentifierParam {
                     }
                 };
 
-                Ok(DownloadIdentifier::YoutubePlaylist(
+                Ok(DownloadRequiredInformation::YoutubePlaylist(
                     YoutubePlaylistDownloadInfo {
                         playlist_url: url,
                         video_urls: urls,
@@ -448,7 +449,7 @@ impl Handler<AsyncAudioNodeCommand> for AudioNode {
 
                         let query_res: Result<MetadataQueryResult, ErrorResponse> =
                             match identifier {
-                                DownloadIdentifier::YoutubeVideo { .. } => {
+                                DownloadRequiredInformation::YoutubeVideo { .. } => {
                                     get_audio_metadata_from_db(&uid).await.map(|res| {
                                         MetadataQueryResult::Single(
                                             res.map(|md| MetadataExists::Found {
@@ -461,14 +462,15 @@ impl Handler<AsyncAudioNodeCommand> for AudioNode {
                                         )
                                     })
                                 }
-                                DownloadIdentifier::YoutubePlaylist(
+                                DownloadRequiredInformation::YoutubePlaylist(
                                     YoutubePlaylistDownloadInfo { ref video_urls, .. },
                                 ) => {
                                     let mut metadata_list = Vec::with_capacity(video_urls.len());
                                     for url in video_urls {
-                                        let audio_identifier = DownloadIdentifier::YoutubeVideo {
-                                            url: url.to_owned(),
-                                        };
+                                        let audio_identifier =
+                                            DownloadRequiredInformation::YoutubeVideo {
+                                                url: url.to_owned(),
+                                            };
 
                                         let metadata =
                                             get_audio_metadata_from_db(&uid).await.unwrap();
@@ -546,7 +548,7 @@ fn handle_add_single_queue_item(
         MetadataExists::NotFound { url } => {
             node.downloader_addr.do_send(DownloadAudioRequest {
                 addr: node_addr,
-                identifier: DownloadIdentifier::YoutubeVideo { url },
+                identifier: DownloadRequiredInformation::YoutubeVideo { url },
             });
 
             return None;
