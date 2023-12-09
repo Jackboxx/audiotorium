@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use serde::Deserialize;
 
+use crate::audio_hosts::youtube::YoutubeStatus;
+
 use super::YoutubeSnippet;
 
 pub async fn get_playlist_metadata(url: &str, api_key: &str) -> anyhow::Result<YoutubeSnippet> {
@@ -38,7 +40,7 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
         return Err(anyhow!("faild to download youtube playlist {url}"));
     };
 
-    let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId={playlist_id}&key={api_key}");
+    let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet,status&maxResults=50&playlistId={playlist_id}&key={api_key}");
     let resp_text = reqwest::get(api_url).await?.text().await?;
 
     #[derive(Debug, Deserialize)]
@@ -51,6 +53,7 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
     #[serde(rename_all = "camelCase")]
     struct YoutubePlaylistItem {
         snippet: YoutubePlaylistItemSnippet,
+        status: YoutubeStatus,
     }
 
     #[derive(Debug, Deserialize)]
@@ -69,13 +72,17 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
     Ok(playlist_items
         .items
         .into_iter()
-        .map(|item| {
-            format!(
+        .filter_map(|item| {
+            is_public(&item.status).then_some(format!(
                 "https://www.youtube.com/watch?v={id}",
                 id = item.snippet.resource_id.video_id
-            )
+            ))
         })
         .collect())
+}
+
+fn is_public(status: &YoutubeStatus) -> bool {
+    status.privacy_status == "public"
 }
 
 fn extract_playlist_id(url: &str) -> Option<&str> {

@@ -12,6 +12,12 @@ pub struct YoutubeSnippet {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeStatus {
+    pub privacy_status: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct YoutubeMaxResThumbnail {
     pub maxres: YoutubeThumbnail,
 }
