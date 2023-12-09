@@ -35,16 +35,12 @@ pub struct DownloadAudioRequest {
     pub identifier: DownloadRequiredInformation,
 }
 
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct NotifyDownloadUpdate {
-    pub result: DownloadUpdate,
-}
-
 type SingleDownloadFinished =
     Result<(DownloadInfo, AudioMetaData, PathBuf), (DownloadInfo, ErrorResponse)>;
 
-pub enum DownloadUpdate {
+#[derive(Message)]
+#[rtype(result = "()")]
+pub enum NotifyDownloadUpdate {
     Queued(DownloadInfo),
     FailedToQueue((DownloadInfo, ErrorResponse)),
     SingleFinished(SingleDownloadFinished),
@@ -86,18 +82,15 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
         match self.queue.try_lock() {
             Ok(mut queue) => {
                 let info = (&msg.identifier).into();
-                msg.addr.do_send(NotifyDownloadUpdate {
-                    result: DownloadUpdate::Queued(info),
-                });
+                msg.addr.do_send(NotifyDownloadUpdate::Queued(info));
 
                 queue.push_back(msg);
             }
             Err(err) => {
                 let err_resp = err.into_err_resp("failed to add audio to download queue\nERROR:");
                 let info = msg.identifier.into();
-                msg.addr.do_send(NotifyDownloadUpdate {
-                    result: DownloadUpdate::FailedToQueue((info, err_resp)),
-                });
+                msg.addr
+                    .do_send(NotifyDownloadUpdate::FailedToQueue((info, err_resp)));
             }
         }
     }
@@ -135,7 +128,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                 for url in videos_to_process.to_owned() {
                     let tx = pool.begin().await.unwrap();
 
-                    let info = DownloadInfo::yt_video(&url);
+                    let info = DownloadInfo::yt_video_from_arc(&url);
                     let video_url = YoutubeVideoUrl(&url);
 
                     let result = match download_youtube_audio_with_metadata(&video_url, tx).await {
@@ -151,16 +144,12 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                         }
                     };
 
-                    addr.do_send(NotifyDownloadUpdate {
-                        result: DownloadUpdate::SingleFinished(result),
-                    });
+                    addr.do_send(NotifyDownloadUpdate::SingleFinished(result));
                 }
 
                 if videos_for_next_batch.is_empty() {
-                    addr.do_send(NotifyDownloadUpdate {
-                        result: DownloadUpdate::BatchUpdated {
-                            batch: DownloadInfo::yt_playlist(&playlist_url.0, &video_urls),
-                        },
+                    addr.do_send(NotifyDownloadUpdate::BatchUpdated {
+                        batch: DownloadInfo::yt_playlist_from_arc(&playlist_url.0, &video_urls),
                     });
                 } else {
                     let next_batch =
@@ -169,10 +158,8 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                             video_urls: videos_for_next_batch.to_vec(),
                         });
 
-                    addr.do_send(NotifyDownloadUpdate {
-                        result: DownloadUpdate::BatchUpdated {
-                            batch: DownloadInfo::yt_playlist(&playlist_url.0, &video_urls),
-                        },
+                    addr.do_send(NotifyDownloadUpdate::BatchUpdated {
+                        batch: DownloadInfo::yt_playlist_from_arc(&playlist_url.0, &video_urls),
                     });
 
                     queue.push_back(DownloadAudioRequest {

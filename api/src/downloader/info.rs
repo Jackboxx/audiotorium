@@ -47,9 +47,22 @@ impl PartialEq for DownloadInfo {
 }
 
 impl DownloadInfo {
+    pub fn yt_video_from_arc(video_url: &Arc<str>) -> Self {
+        DownloadInfo::YoutubeVideo {
+            url: Arc::clone(video_url),
+        }
+    }
+
     pub fn yt_video(video_url: impl AsRef<str>) -> Self {
         DownloadInfo::YoutubeVideo {
             url: video_url.as_ref().into(),
+        }
+    }
+
+    pub fn yt_playlist_from_arc(playlist_url: &Arc<str>, video_urls: &[Arc<str>]) -> Self {
+        DownloadInfo::YoutubePlaylist {
+            playlist_url: Arc::clone(playlist_url),
+            video_urls: video_urls.iter().map(|str| Arc::clone(str)).collect(),
         }
     }
 

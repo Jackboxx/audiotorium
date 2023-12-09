@@ -15,7 +15,7 @@ use crate::{
     },
     db_pool,
     downloader::{
-        actor::{AudioDownloader, DownloadAudioRequest, DownloadUpdate, NotifyDownloadUpdate},
+        actor::{AudioDownloader, DownloadAudioRequest, NotifyDownloadUpdate},
         download_identifier::{
             DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo,
             YoutubePlaylistUrl, YoutubeVideoUrl,
@@ -210,8 +210,8 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
     type Result = ();
 
     fn handle(&mut self, msg: NotifyDownloadUpdate, _ctx: &mut Self::Context) -> Self::Result {
-        match msg.result {
-            DownloadUpdate::Queued(info) => {
+        match msg {
+            NotifyDownloadUpdate::Queued(info) => {
                 self.active_downloads.insert(info);
 
                 let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
@@ -221,7 +221,7 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
 
                 self.multicast(msg);
             }
-            DownloadUpdate::FailedToQueue((info, err_resp)) => {
+            NotifyDownloadUpdate::FailedToQueue((info, err_resp)) => {
                 self.failed_downloads.insert(info, err_resp);
 
                 let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
@@ -231,7 +231,7 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
 
                 self.multicast(msg);
             }
-            DownloadUpdate::SingleFinished(Ok((info, metadata, path))) => {
+            NotifyDownloadUpdate::SingleFinished(Ok((info, metadata, path))) => {
                 self.active_downloads.remove(&info);
                 self.failed_downloads.remove(&info);
 
@@ -255,7 +255,7 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
                     AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(self.player.queue()));
                 self.multicast(updated_queue_msg);
             }
-            DownloadUpdate::SingleFinished(Err((info, err_resp))) => {
+            NotifyDownloadUpdate::SingleFinished(Err((info, err_resp))) => {
                 self.active_downloads.remove(&info);
                 self.failed_downloads.insert(info, err_resp);
 
@@ -266,7 +266,7 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
 
                 self.multicast(msg);
             }
-            DownloadUpdate::BatchUpdated { batch } => match batch {
+            NotifyDownloadUpdate::BatchUpdated { batch } => match batch {
                 DownloadInfo::YoutubePlaylist { ref video_urls, .. } => {
                     if video_urls.is_empty() {
                         self.active_downloads.remove(&batch);

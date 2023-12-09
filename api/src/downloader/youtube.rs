@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    actor::{DownloadUpdate, NotifyDownloadUpdate},
+    actor::NotifyDownloadUpdate,
     download_identifier::{Identifier, YoutubeVideoUrl},
     info::DownloadInfo,
 };
@@ -31,21 +31,21 @@ pub async fn process_single_youtube_video(
                 "failed to download video, URL: {url}, ERROR: {err}",
                 url = url.0
             );
-            addr.do_send(NotifyDownloadUpdate {
-                result: DownloadUpdate::SingleFinished(Err((
-                    info,
-                    ErrorResponse {
-                        error: format!("failed to download video with url: {url}", url = url.0),
-                    },
-                ))),
-            });
+            addr.do_send(NotifyDownloadUpdate::SingleFinished(Err((
+                info,
+                ErrorResponse {
+                    error: format!("failed to download video with url: {url}", url = url.0),
+                },
+            ))));
             return;
         }
     };
 
-    addr.do_send(NotifyDownloadUpdate {
-        result: DownloadUpdate::SingleFinished(Ok((info, metadata, url.to_path_with_ext()))),
-    });
+    addr.do_send(NotifyDownloadUpdate::SingleFinished(Ok((
+        info,
+        metadata,
+        url.to_path_with_ext(),
+    ))));
 }
 
 pub async fn download_youtube_audio_with_metadata(
