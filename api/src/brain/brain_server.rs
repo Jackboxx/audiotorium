@@ -4,7 +4,7 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageRespons
 
 use crate::{
     audio_playback::audio_player::AudioPlayer,
-    downloader::AudioDownloader,
+    downloader::actor::AudioDownloader,
     node::{
         health::AudioNodeHealth,
         node_server::{AudioNode, AudioNodeInfo, SourceName},

@@ -61,7 +61,7 @@ pub struct YoutubePlaylistUrl<T: AsRef<str> + std::fmt::Debug>(pub T);
 impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubeVideoUrl<T> {
     fn uid(&self) -> String {
         let prefix = DownloadKind::YoutubeVideo.prefix();
-        let hex_url = self.uid();
+        let hex_url = hex::encode(self.0.as_ref());
 
         format!("{prefix}{hex_url}")
     }
@@ -70,7 +70,7 @@ impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubeVideoUrl<T> {
 impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubePlaylistUrl<T> {
     fn uid(&self) -> String {
         let prefix = DownloadKind::YoutubePlaylist.prefix();
-        let hex_url = self.uid();
+        let hex_url = hex::encode(self.0.as_ref());
 
         format!("{prefix}{hex_url}")
     }

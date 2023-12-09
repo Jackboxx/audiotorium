@@ -86,10 +86,11 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
 
         match self.queue.try_lock() {
             Ok(mut queue) => {
-                let info = msg.identifier.into();
+                let info = (&msg.identifier).into();
                 msg.addr.do_send(NotifyDownloadUpdate {
                     result: DownloadUpdate::Queued(info),
                 });
+
                 queue.push_back(msg);
             }
             Err(err) => {
