@@ -1,5 +1,28 @@
+use serde::Deserialize;
+
 pub mod playlist;
 pub mod video;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeSnippet {
+    pub title: String,
+    pub channel_title: String,
+    pub thumbnails: YoutubeMaxResThumbnail,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct YoutubeMaxResThumbnail {
+    pub maxres: YoutubeThumbnail,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoutubeThumbnail {
+    pub url: String,
+    pub width: u64,
+    pub height: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum YoutubeContentType {

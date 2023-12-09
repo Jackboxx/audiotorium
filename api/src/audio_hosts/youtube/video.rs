@@ -3,24 +3,13 @@ use serde::Deserialize;
 
 use crate::audio_playback::audio_item::AudioMetaData;
 
+use super::YoutubeSnippet;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YoutubeVideo {
-    pub snippet: YoutubeVideoSnippet,
+    pub snippet: YoutubeSnippet,
     pub content_details: YoutubeVideoContentDetails,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct YoutubeVideoSnippet {
-    pub title: String,
-    pub channel_title: String,
-    pub thumbnails: YoutubeVideoMaxResThumbnail,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct YoutubeVideoMaxResThumbnail {
-    maxres: YoutubeVideoThumbnail,
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,14 +17,6 @@ pub struct YoutubeVideoMaxResThumbnail {
 pub struct YoutubeVideoContentDetails {
     #[serde(rename = "duration")]
     pub duration_iso_8601: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct YoutubeVideoThumbnail {
-    pub url: String,
-    pub width: u64,
-    pub height: u64,
 }
 
 impl From<YoutubeVideo> for AudioMetaData {
@@ -84,7 +65,6 @@ pub async fn get_video_metadata(url: &str, api_key: &str) -> anyhow::Result<Yout
         format!("https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={watch_id}&key={api_key}");
 
     let resp_text = reqwest::get(api_url).await?.text().await?;
-    log::info!("{resp_text}");
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
