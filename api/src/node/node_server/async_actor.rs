@@ -22,120 +22,119 @@ use super::AudioNode;
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
-pub enum AsyncAudioNodeCommand {
-    AddQueueItem(AddQueueItemParams),
-}
+pub struct AsyncAddQueueItem(pub AddQueueItemParams);
 
-pub enum MetadataExists {
+#[derive(Debug)]
+pub enum LocalAudioMetadata {
     Found {
         metadata: AudioMetaData,
         path: PathBuf,
     },
     NotFound {
-        url: Arc<str>,
+        url: UrlKind,
     },
 }
 
-impl Handler<AsyncAudioNodeCommand> for AudioNode {
+#[derive(Debug)]
+pub enum UrlKind {
+    Youtube(Arc<str>),
+}
+
+#[derive(Debug, Message)]
+#[rtype(type = "()")]
+struct LocalAudioMetadataList {
+    list_url: UrlKind,
+    metadata: Vec<(Arc<str>, Option<AudioMetaData>)>,
+}
+
+impl Handler<AsyncAddQueueItem> for AudioNode {
     type Result = ResponseActFuture<Self, ()>;
 
-    fn handle(&mut self, msg: AsyncAudioNodeCommand, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AsyncAddQueueItem, _ctx: &mut Self::Context) -> Self::Result {
         enum MetadataQueryResult {
-            Single(MetadataExists),
-            Many(Vec<Option<AudioMetaData>>),
+            Single(LocalAudioMetadata),
+            Many(LocalAudioMetadataList),
         }
 
-        match msg {
-            AsyncAudioNodeCommand::AddQueueItem(params) => {
-                Box::pin(
-                    async move {
-                        let identifier = params.identifier.to_internal_identifier().await.unwrap();
+        Box::pin(
+            async move {
+                let identifier = msg.0.identifier.get_required_info().await.unwrap();
 
-                        // TODO: differentiate between video and playlist
-                        //       - video:       use existing
-                        //       - playlist:
-                        //          1. query if playlist exists
-                        //          2. create playlist table if not
-                        //          3. create links to metadata for existing metadata
-                        //          4. make request for remaining metadata
+                // TODO: differentiate between video and playlist
+                //       - video:       use existing
+                //       - playlist:
+                //          1. query if playlist exists
+                //          2. create playlist table if not
+                //          3. create links to metadata for existing metadata
+                //          4. make request for remaining metadata
 
-                        let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier
-                        {
-                            DownloadRequiredInformation::YoutubeVideo { url } => {
-                                let uid = url.uid();
-                                get_audio_metadata_from_db(&uid).await.map(|res| {
-                                    MetadataQueryResult::Single(
-                                        res.map(|md| MetadataExists::Found {
-                                            metadata: md,
-                                            path: url.to_path_with_ext(),
-                                        })
-                                        .unwrap_or(MetadataExists::NotFound { url: url.0 }),
-                                    )
+                let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier {
+                    DownloadRequiredInformation::YoutubeVideo { url } => {
+                        let uid = url.uid();
+                        get_audio_metadata_from_db(&uid).await.map(|res| {
+                            MetadataQueryResult::Single(
+                                res.map(|md| LocalAudioMetadata::Found {
+                                    metadata: md,
+                                    path: url.to_path_with_ext(),
                                 })
-                            }
-                            DownloadRequiredInformation::YoutubePlaylist(
-                                YoutubePlaylistDownloadInfo {
-                                    video_urls,
-                                    playlist_url,
-                                },
-                            ) => {
-                                let uid = playlist_url.uid();
-                                let mut metadata_list = Vec::with_capacity(video_urls.len());
-
-                                // TODO: figure out what is supposed to happen here
-                                for url in video_urls {
-                                    let _audio_identifier =
-                                        DownloadRequiredInformation::YoutubeVideo {
-                                            url: YoutubeVideoUrl(url),
-                                        };
-
-                                    let metadata = get_audio_metadata_from_db(&uid).await.unwrap();
-                                    metadata_list.push(metadata);
-                                }
-
-                                Ok(MetadataQueryResult::Many(metadata_list))
-                            }
-                        };
-
-                        query_res
+                                .unwrap_or(
+                                    LocalAudioMetadata::NotFound {
+                                        url: UrlKind::Youtube(url.0),
+                                    },
+                                ),
+                            )
+                        })
                     }
-                    .into_actor(self)
-                    .map(move |res, act, ctx| {
-                        match res {
-                            Ok(MetadataQueryResult::Single(data)) => {
-                                let msg = handle_add_single_queue_item(
-                                    data,
-                                    act,
-                                    ctx.address().recipient(),
-                                );
+                    DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
+                        video_urls,
+                        playlist_url,
+                    }) => {
+                        let uid = playlist_url.uid();
+                        let mut metadata_list = Vec::with_capacity(video_urls.len());
 
-                                if let Some(msg) = msg {
-                                    act.multicast_result(msg);
-                                }
-                            }
-                            Ok(MetadataQueryResult::Many(_metadata_list)) => {
-                                // TODO
-                                // create playlist table if not exists
-
-                                // create playlist items for existing items if not exists
-
-                                // create new identifier with missing items & make download request
-
-                                // play found metadata
-                            }
-                            Err(err_resp) => {
-                                act.multicast(err_resp);
-                            }
+                        for url in video_urls {
+                            let metadata = get_audio_metadata_from_db(&uid).await.unwrap();
+                            metadata_list.push((url, metadata));
                         }
-                    }),
-                )
-            } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
-        }
+
+                        Ok(MetadataQueryResult::Many(LocalAudioMetadataList {
+                            list_url: UrlKind::Youtube(playlist_url.0),
+                            metadata: metadata_list,
+                        }))
+                    }
+                };
+
+                query_res
+            }
+            .into_actor(self)
+            .map(move |res, act, ctx| match res {
+                Ok(MetadataQueryResult::Single(data)) => {
+                    let msg = handle_add_single_queue_item(data, act, ctx.address().recipient());
+
+                    if let Some(msg) = msg {
+                        act.multicast_result(msg);
+                    }
+                }
+                Ok(MetadataQueryResult::Many(local_list)) => ctx.notify(local_list),
+                Err(err_resp) => {
+                    act.multicast(err_resp);
+                }
+            }),
+        )
+    } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
+}
+
+impl Handler<LocalAudioMetadataList> for AudioNode {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: LocalAudioMetadataList, ctx: &mut Self::Context) -> Self::Result {
+        // TODO
+        todo!()
     }
 }
 
 impl DownloadIdentifierParam {
-    async fn to_internal_identifier(self) -> anyhow::Result<DownloadRequiredInformation> {
+    async fn get_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
         let url = match self {
             Self::Youtube { url } => url,
         };

@@ -8,7 +8,7 @@ use crate::{
         actor::{DownloadAudioRequest, NotifyDownloadUpdate},
         download_identifier::{DownloadRequiredInformation, YoutubeVideoUrl},
     },
-    node::node_server::async_actor::AsyncAudioNodeCommand,
+    node::node_server::async_actor::AsyncAddQueueItem,
     streams::node_streams::AudioNodeInfoStreamMessage,
     utils::log_msg_received,
     ErrorResponse, IntoErrResp,
@@ -16,7 +16,10 @@ use crate::{
 
 use actix::{AsyncContext, Handler, Recipient};
 
-use super::{async_actor::MetadataExists, extract_queue_metadata, AudioNode};
+use super::{
+    async_actor::{LocalAudioMetadata, UrlKind},
+    extract_queue_metadata, AudioNode,
+};
 
 impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
@@ -28,7 +31,7 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::AddQueueItem(params) => {
                 log::info!("'AddQueueItem' handler received a message, MESSAGE: {msg:?}");
 
-                ctx.notify(AsyncAudioNodeCommand::AddQueueItem(params.clone()));
+                ctx.notify(AsyncAddQueueItem(params.clone()));
                 Ok(())
             }
             AudioNodeCommand::RemoveQueueItem(params) => {
@@ -107,13 +110,13 @@ impl Handler<AudioNodeCommand> for AudioNode {
     }
 }
 
-pub fn handle_add_single_queue_item(
-    data: MetadataExists,
+pub(super) fn handle_add_single_queue_item(
+    data: LocalAudioMetadata,
     node: &mut AudioNode,
     node_addr: Recipient<NotifyDownloadUpdate>,
 ) -> Option<Result<AudioNodeInfoStreamMessage, ErrorResponse>> {
     match data {
-        MetadataExists::Found { metadata, path } => {
+        LocalAudioMetadata::Found { metadata, path } => {
             if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
                 metadata,
                 locator: path,
@@ -124,12 +127,16 @@ pub fn handle_add_single_queue_item(
                 }));
             }
         }
-        MetadataExists::NotFound { url } => {
-            node.downloader_addr.do_send(DownloadAudioRequest {
-                addr: node_addr,
-                identifier: DownloadRequiredInformation::YoutubeVideo {
+        LocalAudioMetadata::NotFound { url } => {
+            let download_info = match url {
+                UrlKind::Youtube(url) => DownloadRequiredInformation::YoutubeVideo {
                     url: YoutubeVideoUrl(url),
                 },
+            };
+
+            node.downloader_addr.do_send(DownloadAudioRequest {
+                addr: node_addr,
+                identifier: download_info,
             });
 
             return None;
