@@ -10,7 +10,7 @@ use ts_rs::TS;
 
 use crate::{
     audio_playback::audio_item::AudioMetaData,
-    node::node_server::{NodeConnectMessage, NodeDisconnectMessage},
+    node::node_server::connections::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
         AudioStateInfo, RunningDownloadInfo,
