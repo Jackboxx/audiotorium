@@ -24,7 +24,7 @@ pub async fn process_single_youtube_video(
 
     let info = DownloadInfo::yt_video(&url.0);
 
-    let metadata = match download_youtube_audio_with_metadata(url, tx).await {
+    let metadata = match download_and_store_youtube_audio_with_metadata(url, tx).await {
         Ok(metadata) => metadata,
         Err(err) => {
             log::error!(
@@ -48,7 +48,7 @@ pub async fn process_single_youtube_video(
     ))));
 }
 
-pub async fn download_youtube_audio_with_metadata(
+pub async fn download_and_store_youtube_audio_with_metadata(
     url: &YoutubeVideoUrl<impl AsRef<str> + std::fmt::Debug>,
     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> anyhow::Result<AudioMetaData> {

@@ -1,20 +1,27 @@
 use std::{path::PathBuf, sync::Arc};
 
-use actix::{ActorFutureExt, AsyncContext, Handler, Message, ResponseActFuture, WrapFuture};
+use actix::{
+    ActorFutureExt, AsyncContext, Handler, Message, Recipient, ResponseActFuture, WrapFuture,
+};
 use anyhow::anyhow;
 
 use crate::{
     audio_hosts::youtube::{
         playlist::get_playlist_video_urls, youtube_content_type, YoutubeContentType,
     },
-    audio_playback::audio_item::AudioMetaData,
+    audio_playback::audio_item::{AudioMetaData, AudioPlayerQueueItem},
     commands::node_commands::{AddQueueItemParams, DownloadIdentifierParam},
     db_pool,
-    downloader::download_identifier::{
-        DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo, YoutubePlaylistUrl,
-        YoutubeVideoUrl,
+    downloader::{
+        actor::{DownloadAudioRequest, NotifyDownloadUpdate},
+        download_identifier::{
+            DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo,
+            YoutubePlaylistUrl, YoutubeVideoUrl,
+        },
     },
-    node::node_server::sync_actor::handle_add_single_queue_item,
+    node::node_server::{extract_queue_metadata, sync_actor::handle_add_single_queue_item},
+    streams::node_streams::AudioNodeInfoStreamMessage,
+    utils::log_msg_received,
     yt_api_key, ErrorResponse, IntoErrResp,
 };
 
@@ -40,17 +47,21 @@ pub enum UrlKind {
     Youtube(Arc<str>),
 }
 
+type MetadataList = Vec<(Arc<str>, Option<AudioMetaData>)>;
+
 #[derive(Debug, Message)]
-#[rtype(type = "()")]
+#[rtype(result = "()")]
 struct LocalAudioMetadataList {
     list_url: UrlKind,
-    metadata: Vec<(Arc<str>, Option<AudioMetaData>)>,
+    metadata: MetadataList,
 }
 
 impl Handler<AsyncAddQueueItem> for AudioNode {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: AsyncAddQueueItem, _ctx: &mut Self::Context) -> Self::Result {
+        log_msg_received(&self, &msg);
+
         enum MetadataQueryResult {
             Single(LocalAudioMetadata),
             Many(LocalAudioMetadataList),
@@ -59,14 +70,6 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
         Box::pin(
             async move {
                 let identifier = msg.0.identifier.get_required_info().await.unwrap();
-
-                // TODO: differentiate between video and playlist
-                //       - video:       use existing
-                //       - playlist:
-                //          1. query if playlist exists
-                //          2. create playlist table if not
-                //          3. create links to metadata for existing metadata
-                //          4. make request for remaining metadata
 
                 let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier {
                     DownloadRequiredInformation::YoutubeVideo { url } => {
@@ -89,11 +92,24 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                         video_urls,
                         playlist_url,
                     }) => {
-                        let uid = playlist_url.uid();
+                        let playlist_uid = playlist_url.uid();
+                        store_playlist_if_not_exists(&playlist_uid).await.unwrap();
+
                         let mut metadata_list = Vec::with_capacity(video_urls.len());
 
                         for url in video_urls {
-                            let metadata = get_audio_metadata_from_db(&uid).await.unwrap();
+                            let audio_uid = YoutubeVideoUrl(url.clone()).uid();
+
+                            let metadata = get_audio_metadata_from_db(&audio_uid).await.unwrap();
+                            if metadata.is_some() {
+                                store_playlist_item_relation_if_not_exists(
+                                    &playlist_uid,
+                                    &audio_uid,
+                                )
+                                .await
+                                .unwrap();
+                            }
+
                             metadata_list.push((url, metadata));
                         }
 
@@ -115,7 +131,18 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                         act.multicast_result(msg);
                     }
                 }
-                Ok(MetadataQueryResult::Many(local_list)) => ctx.notify(local_list),
+                Ok(MetadataQueryResult::Many(LocalAudioMetadataList { list_url, metadata })) => {
+                    let download_addr = act.downloader_addr.clone().recipient();
+
+                    play_existing_playlist_items(act, &metadata);
+
+                    request_download_of_missing_items(
+                        download_addr,
+                        ctx.address().recipient(),
+                        list_url,
+                        &metadata,
+                    );
+                }
                 Err(err_resp) => {
                     act.multicast(err_resp);
                 }
@@ -124,12 +151,63 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
     } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
 }
 
-impl Handler<LocalAudioMetadataList> for AudioNode {
-    type Result = ResponseActFuture<Self, ()>;
+fn play_existing_playlist_items(node: &mut AudioNode, metadata_list: &MetadataList) {
+    let prev_queue_len = node.player.queue().len();
+    for (url, metadata) in metadata_list {
+        if let Some(data) = metadata {
+            let audio_item = AudioPlayerQueueItem {
+                metadata: data.clone(),
+                locator: YoutubeVideoUrl(url).to_path_with_ext(),
+            };
 
-    fn handle(&mut self, msg: LocalAudioMetadataList, ctx: &mut Self::Context) -> Self::Result {
-        // TODO
-        todo!()
+            // TODO handle error
+            node.player.push_to_queue(audio_item).unwrap();
+        }
+    }
+
+    if prev_queue_len != node.player.queue().len() {
+        node.multicast(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
+            node.player.queue(),
+        )))
+    }
+}
+
+fn request_download_of_missing_items(
+    downloader_addr: Recipient<DownloadAudioRequest>,
+    receiver_addr: Recipient<NotifyDownloadUpdate>,
+    list_url: UrlKind,
+    metadata_list: &MetadataList,
+) {
+    match list_url {
+        UrlKind::Youtube(url) => {
+            let video_urls: Vec<_> = metadata_list
+                .iter()
+                .filter_map(|(url, metadata)| {
+                    if metadata.is_none() {
+                        Some(Arc::clone(url))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if video_urls.is_empty() {
+                return;
+            }
+
+            let required_info =
+                DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
+                    playlist_url: YoutubePlaylistUrl(url),
+                    video_urls,
+                });
+
+            let request = DownloadAudioRequest {
+                addr: receiver_addr,
+                identifier: required_info,
+            };
+
+            downloader_addr.do_send(request); // TODO handle mailbox full
+        }
     }
 }
 
@@ -177,4 +255,40 @@ async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetaData>, 
     .fetch_optional(db_pool())
     .await
     .into_err_resp("")
+}
+
+async fn store_playlist_if_not_exists(uid: &str) -> Result<(), ErrorResponse> {
+    let mut tx = db_pool().begin().await.into_err_resp("")?;
+
+    sqlx::query!(
+        "INSERT INTO audio_playlist
+        (identifier) VALUES ($1)
+        ON CONFLICT DO NOTHING",
+        uid
+    )
+    .execute(&mut *tx)
+    .await
+    .into_err_resp("")?;
+
+    tx.commit().await.into_err_resp("")
+}
+
+pub async fn store_playlist_item_relation_if_not_exists(
+    playlist_uid: &str,
+    audio_uid: &str,
+) -> Result<(), ErrorResponse> {
+    let mut tx = db_pool().begin().await.into_err_resp("")?;
+
+    sqlx::query!(
+        "INSERT INTO audio_playlist_item
+        (playlist_identifier, item_identifier) VALUES ($1, $2)
+        ON CONFLICT DO NOTHING",
+        playlist_uid,
+        audio_uid
+    )
+    .execute(&mut *tx)
+    .await
+    .into_err_resp("")?;
+
+    tx.commit().await.into_err_resp("")
 }

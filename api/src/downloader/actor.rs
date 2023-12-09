@@ -4,11 +4,11 @@ use crate::{
     downloader::{
         download_identifier::{
             DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo,
-            YoutubePlaylistUrl,
         },
         info::DownloadInfo,
-        youtube::{download_youtube_audio_with_metadata, process_single_youtube_video},
+        youtube::{download_and_store_youtube_audio_with_metadata, process_single_youtube_video},
     },
+    node::node_server::async_actor::store_playlist_item_relation_if_not_exists,
     utils::log_msg_received,
     ErrorResponse, IntoErrResp,
 };
@@ -113,11 +113,6 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                 ref playlist_url,
                 video_urls,
             }) => {
-                // TODO
-                // - add db structure for playlists
-                // - detect videos in playlist
-                // - update playlist table with info
-
                 let (videos_to_process, videos_for_next_batch) =
                     if MAX_CONSECUTIVE_BATCHES > video_urls.len() {
                         (video_urls.as_slice(), Default::default())
@@ -131,8 +126,21 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     let info = DownloadInfo::yt_video_from_arc(&url);
                     let video_url = YoutubeVideoUrl(&url);
 
-                    let result = match download_youtube_audio_with_metadata(&video_url, tx).await {
-                        Ok(metadata) => Ok((info, metadata, video_url.to_path_with_ext())),
+                    let result = match download_and_store_youtube_audio_with_metadata(
+                        &video_url, tx,
+                    )
+                    .await
+                    {
+                        Ok(metadata) => {
+                            store_playlist_item_relation_if_not_exists(
+                                &playlist_url.uid(),
+                                &video_url.uid(),
+                            )
+                            .await
+                            .unwrap();
+
+                            Ok((info, metadata, video_url.to_path_with_ext()))
+                        }
                         Err(err) => {
                             log::error!("failed to download video, URL: {url}, ERROR: {err}");
                             Err((
@@ -149,17 +157,23 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
 
                 if videos_for_next_batch.is_empty() {
                     addr.do_send(NotifyDownloadUpdate::BatchUpdated {
-                        batch: DownloadInfo::yt_playlist_from_arc(&playlist_url.0, &video_urls),
+                        batch: DownloadInfo::yt_playlist_from_arc(
+                            &playlist_url.0,
+                            &videos_for_next_batch,
+                        ),
                     });
                 } else {
                     let next_batch =
                         DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
-                            playlist_url: YoutubePlaylistUrl(playlist_url.0.clone()),
+                            playlist_url: playlist_url.clone(),
                             video_urls: videos_for_next_batch.to_vec(),
                         });
 
                     addr.do_send(NotifyDownloadUpdate::BatchUpdated {
-                        batch: DownloadInfo::yt_playlist_from_arc(&playlist_url.0, &video_urls),
+                        batch: DownloadInfo::yt_playlist_from_arc(
+                            &playlist_url.0,
+                            &videos_for_next_batch,
+                        ),
                     });
 
                     queue.push_back(DownloadAudioRequest {

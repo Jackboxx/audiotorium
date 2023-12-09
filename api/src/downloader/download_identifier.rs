@@ -75,3 +75,15 @@ impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubePlaylistUrl<T> {
         format!("{prefix}{hex_url}")
     }
 }
+
+impl Clone for YoutubeVideoUrl<Arc<str>> {
+    fn clone(&self) -> Self {
+        YoutubeVideoUrl(Arc::clone(&self.0))
+    }
+}
+
+impl Clone for YoutubePlaylistUrl<Arc<str>> {
+    fn clone(&self) -> Self {
+        YoutubePlaylistUrl(Arc::clone(&self.0))
+    }
+}
