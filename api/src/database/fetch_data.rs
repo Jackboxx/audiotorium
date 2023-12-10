@@ -92,7 +92,8 @@ pub async fn get_playlist_items_from_db(
         "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url 
             FROM audio_metadata audio
         INNER JOIN audio_playlist_item items 
-            ON items.playlist_identifier = $1",
+            ON audio.identifier = items.item_identifier
+        WHERE items.playlist_identifier = $1",
         playlist_uid
     )
     .fetch_all(db_pool())
