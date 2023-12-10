@@ -95,7 +95,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                 }
                             }
                             Some(AudioKind::YoutubePlaylist) => {
-                                match get_playlist_items_from_db(&uid.0).await {
+                                match get_playlist_items_from_db(&uid.0, None, None).await {
                                     Ok(items) => Ok(MetadataQueryResult::ManyLocal(items)),
                                     Err(err) => {
                                         log::error!("failed to get local playlist audio data for uid '{uid:?}, ERROR: {err:?}'");

@@ -61,10 +61,18 @@ pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadat
 }
 
 pub async fn get_all_audio_metadata_from_db(
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<(ItemUid<Arc<str>>, AudioMetadata)>, ErrorResponse> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+
     sqlx::query_as!(
         AudioQueryResult,
-        "SELECT identifier, name, author, duration, cover_art_url FROM audio_metadata",
+        "SELECT identifier, name, author, duration, cover_art_url FROM audio_metadata
+        LIMIT $1 OFFSET $2",
+        limit,
+        offset
     )
     .fetch_all(db_pool())
     .await
@@ -73,10 +81,18 @@ pub async fn get_all_audio_metadata_from_db(
 }
 
 pub async fn get_all_playlist_metadata_from_db(
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<(ItemUid<Arc<str>>, PlaylistMetadata)>, ErrorResponse> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+
     sqlx::query_as!(
         PlaylistQueryResult,
-        "SELECT identifier, name, author, cover_art_url FROM audio_playlist",
+        "SELECT identifier, name, author, cover_art_url FROM audio_playlist
+        LIMIT $1 OFFSET $2",
+        limit,
+        offset,
     )
     .fetch_all(db_pool())
     .await
@@ -86,15 +102,23 @@ pub async fn get_all_playlist_metadata_from_db(
 
 pub async fn get_playlist_items_from_db(
     playlist_uid: &str,
+    limit: Option<i64>,
+    offset: Option<i64>,
 ) -> Result<Vec<(ItemUid<Arc<str>>, AudioMetadata)>, ErrorResponse> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+
     sqlx::query_as!(
         AudioQueryResult,
-        "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url 
+        "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url
             FROM audio_metadata audio
         INNER JOIN audio_playlist_item items 
             ON audio.identifier = items.item_identifier
-        WHERE items.playlist_identifier = $1",
-        playlist_uid
+        WHERE items.playlist_identifier = $1
+        LIMIT $2 OFFSET $3",
+        playlist_uid,
+        limit,
+        offset,
     )
     .fetch_all(db_pool())
     .await

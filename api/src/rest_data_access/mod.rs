@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix_web::{get, web, HttpResponse};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     audio_playback::audio_item::AudioMetadata,
@@ -26,9 +26,17 @@ struct StoredPlaylistData {
     metadata: PlaylistMetadata,
 }
 
+#[derive(Deserialize)]
+struct OffsetLimitParams {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
 #[get("/data/playlists")]
-pub async fn get_playlists() -> HttpResponse {
-    match get_all_playlist_metadata_from_db().await {
+pub async fn get_playlists(
+    web::Query(OffsetLimitParams { limit, offset }): web::Query<OffsetLimitParams>,
+) -> HttpResponse {
+    match get_all_playlist_metadata_from_db(limit, offset).await {
         Ok(items) => {
             let result: Vec<StoredPlaylistData> = items
                 .into_iter()
@@ -51,8 +59,10 @@ pub async fn get_playlists() -> HttpResponse {
 }
 
 #[get("/data/audio")]
-pub async fn get_audio() -> HttpResponse {
-    match get_all_audio_metadata_from_db().await {
+pub async fn get_audio(
+    web::Query(OffsetLimitParams { limit, offset }): web::Query<OffsetLimitParams>,
+) -> HttpResponse {
+    match get_all_audio_metadata_from_db(limit, offset).await {
         Ok(items) => {
             let result: Vec<StoredAudioData> = items
                 .into_iter()
@@ -75,8 +85,11 @@ pub async fn get_audio() -> HttpResponse {
 }
 
 #[get("/data/playlists/{playlist_uid}")]
-pub async fn get_audio_in_playlist(playlist_uid: web::Path<Arc<str>>) -> HttpResponse {
-    match get_playlist_items_from_db(playlist_uid.as_ref()).await {
+pub async fn get_audio_in_playlist(
+    playlist_uid: web::Path<Arc<str>>,
+    web::Query(OffsetLimitParams { limit, offset }): web::Query<OffsetLimitParams>,
+) -> HttpResponse {
+    match get_playlist_items_from_db(playlist_uid.as_ref(), limit, offset).await {
         Ok(items) => {
             let result: Vec<StoredAudioData> = items
                 .into_iter()

@@ -144,7 +144,9 @@ impl AudioNode {
     }
 }
 
-// remove trailing parameters from URL
+// TODO make more detailed an properly handle invalid URLs
+
+/// remove trailing parameters from URL
 pub fn clean_url(url: &str) -> &str {
     url.split_once("&").map(|(str, _)| str).unwrap_or(url)
 }
