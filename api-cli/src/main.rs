@@ -182,11 +182,15 @@ impl From<CliNodeCommand> for AudioNodeCommand {
             CliNodeCommand::AddQueueItem { identifier, local } => {
                 if local {
                     AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                        identifier: AudioIdentifier::Local { uid: identifier },
+                        identifier: AudioIdentifier::Local {
+                            uid: identifier.into(),
+                        },
                     })
                 } else {
                     AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                        identifier: AudioIdentifier::Youtube { url: identifier },
+                        identifier: AudioIdentifier::Youtube {
+                            url: identifier.into(),
+                        },
                     })
                 }
             }

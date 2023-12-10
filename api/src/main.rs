@@ -6,6 +6,7 @@ use audio_manager_api::brain::brain_server::AudioBrain;
 use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::actor::AudioDownloader;
 use audio_manager_api::downloader::AUDIO_DIR;
+use audio_manager_api::rest_data_access::{get_audio, get_audio_in_playlist, get_playlists};
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
 use audio_manager_api::{db_pool, AppData, POOL, YOUTUBE_API_KEY};
@@ -75,8 +76,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .wrap(cors)
             .service(get_brain_stream)
-            .service(receive_node_cmd)
             .service(get_node_stream)
+            .service(receive_node_cmd)
+            .service(get_audio)
+            .service(get_playlists)
+            .service(get_audio_in_playlist)
     })
     .bind((addr, 50051))?
     .run()
