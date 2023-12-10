@@ -9,7 +9,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_item::AudioMetaData,
+    audio_playback::audio_item::AudioMetadata,
     node::node_server::connections::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
@@ -34,7 +34,7 @@ pub enum NodeSessionWsResponse {
     SessionConnectedResponse {
         // can't use SerializableQueue due to issue discussed
         // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
-        queue: Option<Vec<AudioMetaData>>,
+        queue: Option<Vec<AudioMetadata>>,
         health: Option<AudioNodeHealth>,
         downloads: Option<RunningDownloadInfo>,
         audio_state_info: Option<AudioStateInfo>,

@@ -1,5 +1,6 @@
 use crate::{
-    audio_playback::audio_item::AudioMetaData,
+    audio_playback::audio_item::AudioMetadata,
+    database::store_data::store_playlist_item_relation_if_not_exists,
     db_pool,
     downloader::{
         download_identifier::Identifier,
@@ -7,7 +8,6 @@ use crate::{
         youtube::{download_and_store_youtube_audio_with_metadata, process_single_youtube_video},
         DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
-    node::node_server::async_actor::store_playlist_item_relation_if_not_exists,
     utils::log_msg_received,
     ErrorResponse, IntoErrResp,
 };
@@ -35,7 +35,7 @@ pub struct DownloadAudioRequest {
 }
 
 type SingleDownloadFinished =
-    Result<(DownloadInfo, AudioMetaData, PathBuf), (DownloadInfo, ErrorResponse)>;
+    Result<(DownloadInfo, AudioMetadata, PathBuf), (DownloadInfo, ErrorResponse)>;
 
 #[derive(Message)]
 #[rtype(result = "()")]

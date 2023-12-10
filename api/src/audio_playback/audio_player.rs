@@ -20,11 +20,11 @@ use crate::{
     utils::setup_device,
 };
 
-use super::audio_item::{AudioDataLocator, AudioMetaData, AudioPlayerQueueItem};
+use super::audio_item::{AudioDataLocator, AudioMetadata, AudioPlayerQueueItem};
 
 type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
 
-pub type SerializableQueue = Vec<AudioMetaData>;
+pub type SerializableQueue = Vec<AudioMetadata>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
     source_name: String,

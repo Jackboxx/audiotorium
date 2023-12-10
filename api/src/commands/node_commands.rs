@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::Message;
 use actix_web::{
     http::StatusCode,
@@ -43,8 +45,8 @@ pub enum AudioNodeCommand {
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum AudioIdentifier {
-    Local { uid: String },
-    Youtube { url: String },
+    Local { uid: Arc<str> },
+    Youtube { url: Arc<str> },
 }
 
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]

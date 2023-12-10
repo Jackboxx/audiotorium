@@ -7,7 +7,7 @@ use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
 #[ts(export, export_to = "../app/src/api-types/")]
-pub struct AudioMetaData {
+pub struct AudioMetadata {
     pub name: Option<String>,
     pub author: Option<String>,
     pub duration: Option<i64>,
@@ -26,6 +26,6 @@ impl AudioDataLocator for PathBuf {
 
 #[derive(Debug, Clone)]
 pub struct AudioPlayerQueueItem<ADL: AudioDataLocator> {
-    pub metadata: AudioMetaData,
+    pub metadata: AudioMetadata,
     pub locator: ADL,
 }

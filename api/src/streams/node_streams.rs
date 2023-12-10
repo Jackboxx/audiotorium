@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 use crate::{
     audio_playback::{
-        audio_item::AudioMetaData,
+        audio_item::AudioMetadata,
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
     downloader::info::DownloadInfo,
@@ -38,7 +38,7 @@ pub enum AudioNodeInfoStreamType {
 pub enum AudioNodeInfoStreamMessage {
     // can't use SerializableQueue due to issue discussed
     // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
-    Queue(Vec<AudioMetaData>),
+    Queue(Vec<AudioMetadata>),
     Health(AudioNodeHealth),
     Download(RunningDownloadInfo),
     AudioStateInfo(AudioStateInfo),

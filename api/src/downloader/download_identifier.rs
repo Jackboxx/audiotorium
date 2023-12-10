@@ -23,7 +23,7 @@ pub enum AudioKind {
 }
 
 impl AudioKind {
-    pub fn from_uid<T: AsRef<str> + std::fmt::Debug>(uid: &AudioUid<T>) -> Option<Self> {
+    pub fn from_uid<T: AsRef<str> + std::fmt::Debug>(uid: &ItemUid<T>) -> Option<Self> {
         match uid {
             s if s.0.as_ref().starts_with(AudioKind::YoutubeVideo.prefix()) => {
                 Some(AudioKind::YoutubeVideo)
@@ -48,9 +48,9 @@ impl AudioKind {
 }
 
 #[derive(Debug)]
-pub struct AudioUid<T: AsRef<str> + std::fmt::Debug>(pub T);
+pub struct ItemUid<T: AsRef<str> + std::fmt::Debug>(pub T);
 
-impl<T: AsRef<str> + std::fmt::Debug> Identifier for AudioUid<T> {
+impl<T: AsRef<str> + std::fmt::Debug> Identifier for ItemUid<T> {
     fn uid(&self) -> String {
         self.0.as_ref().to_string()
     }

@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use serde::Deserialize;
 
-use crate::audio_playback::audio_item::AudioMetaData;
+use crate::audio_playback::audio_item::AudioMetadata;
 
 use super::YoutubeSnippet;
 
@@ -19,7 +19,7 @@ pub struct YoutubeVideoContentDetails {
     pub duration_iso_8601: String,
 }
 
-impl From<YoutubeVideo> for AudioMetaData {
+impl From<YoutubeVideo> for AudioMetadata {
     fn from(value: YoutubeVideo) -> Self {
         let duration = match value.content_details.duration() {
             Some(duration) => match duration.try_into() {
@@ -32,7 +32,7 @@ impl From<YoutubeVideo> for AudioMetaData {
             None => None,
         };
 
-        AudioMetaData {
+        AudioMetadata {
             name: Some(value.snippet.title),
             author: Some(value.snippet.channel_title),
             cover_art_url: Some(value.snippet.thumbnails.maxres.url),
