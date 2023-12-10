@@ -111,17 +111,33 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                             path: uid.to_path_with_ext(),
                                         }))
                                     }
-                                    Ok(None) => todo!(),
-                                    Err(err) => todo!(),
+                                    Ok(None) => {
+                                        log::error!("no local data found for uid '{uid:?}'");
+                                        Err(ErrorResponse {
+                                            error: "no local audio data found".to_owned(),
+                                        })
+                                    }
+                                    Err(err) => {
+                                        log::error!("failed to get local audio data for uid '{uid:?}, ERROR: {err:?}'");
+                                        Err(err)
+                                    },
                                 }
                             }
                             Some(AudioKind::YoutubePlaylist) => {
                                 match get_playlist_items_from_db(&uid.0).await {
                                     Ok(items) => Ok(MetadataQueryResult::ManyLocal(items)),
-                                    Err(err) => todo!(),
+                                    Err(err) => {
+                                        log::error!("failed to get local playlist audio data for uid '{uid:?}, ERROR: {err:?}'");
+                                        Err(err)
+                                    },
                                 }
                             }
-                            None => todo!("error"),
+                            None => {
+                                log::error!("invalid audio uid '{uid:?}'");
+                                Err(ErrorResponse {
+                                    error: "invalid audio uid".to_owned(),
+                                })
+                            },
                         }
                     }
                     DownloadRequiredInformation::YoutubeVideo { url } => {
