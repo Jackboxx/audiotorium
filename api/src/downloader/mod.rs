@@ -15,6 +15,7 @@ pub const AUDIO_DIR: &str = "audio-dev";
 
 #[derive(Debug)]
 pub enum DownloadRequiredInformation {
+    StoredLocally { uid: Arc<str> },
     YoutubeVideo { url: YoutubeVideoUrl<Arc<str>> },
     YoutubePlaylist(YoutubePlaylistDownloadInfo),
 }

@@ -74,18 +74,35 @@ impl DownloadInfo {
     }
 }
 
-impl<T: Borrow<DownloadRequiredInformation>> From<T> for DownloadInfo {
+pub struct OptionalDownloadInfo {
+    inner: Option<DownloadInfo>,
+}
+
+impl From<OptionalDownloadInfo> for Option<DownloadInfo> {
+    fn from(value: OptionalDownloadInfo) -> Self {
+        value.inner
+    }
+}
+
+impl<T: Borrow<DownloadRequiredInformation>> From<T> for OptionalDownloadInfo {
     fn from(value: T) -> Self {
         match value.borrow() {
-            DownloadRequiredInformation::YoutubeVideo { url } => DownloadInfo::YoutubeVideo {
-                url: Arc::clone(&url.0),
+            DownloadRequiredInformation::StoredLocally { .. } => {
+                OptionalDownloadInfo { inner: None }
+            }
+            DownloadRequiredInformation::YoutubeVideo { url } => OptionalDownloadInfo {
+                inner: Some(DownloadInfo::YoutubeVideo {
+                    url: Arc::clone(&url.0),
+                }),
             },
             DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
                 playlist_url,
                 video_urls,
-            }) => DownloadInfo::YoutubePlaylist {
-                playlist_url: Arc::clone(&playlist_url.0),
-                video_urls: video_urls.into_iter().map(|str| Arc::clone(str)).collect(),
+            }) => OptionalDownloadInfo {
+                inner: Some(DownloadInfo::YoutubePlaylist {
+                    playlist_url: Arc::clone(&playlist_url.0),
+                    video_urls: video_urls.into_iter().map(|str| Arc::clone(str)).collect(),
+                }),
             },
         }
     }

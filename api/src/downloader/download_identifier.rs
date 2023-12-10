@@ -17,17 +17,42 @@ pub trait Identifier {
 }
 
 #[derive(Debug)]
-pub enum DownloadKind {
+pub enum AudioKind {
     YoutubeVideo,
     YoutubePlaylist,
 }
 
-impl DownloadKind {
+impl AudioKind {
+    pub fn from_uid<T: AsRef<str> + std::fmt::Debug>(uid: &AudioUid<T>) -> Option<Self> {
+        match uid {
+            s if s.0.as_ref().starts_with(AudioKind::YoutubeVideo.prefix()) => {
+                Some(AudioKind::YoutubeVideo)
+            }
+            s if s
+                .0
+                .as_ref()
+                .starts_with(AudioKind::YoutubePlaylist.prefix()) =>
+            {
+                Some(AudioKind::YoutubePlaylist)
+            }
+            _ => None,
+        }
+    }
+
     fn prefix(&self) -> &str {
         match self {
             Self::YoutubeVideo => "youtube_audio_",
             Self::YoutubePlaylist => "youtube_playlist_audio_",
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct AudioUid<T: AsRef<str> + std::fmt::Debug>(pub T);
+
+impl<T: AsRef<str> + std::fmt::Debug> Identifier for AudioUid<T> {
+    fn uid(&self) -> String {
+        self.0.as_ref().to_string()
     }
 }
 
@@ -39,7 +64,7 @@ pub struct YoutubePlaylistUrl<T: AsRef<str> + std::fmt::Debug>(pub T);
 
 impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubeVideoUrl<T> {
     fn uid(&self) -> String {
-        let prefix = DownloadKind::YoutubeVideo.prefix();
+        let prefix = AudioKind::YoutubeVideo.prefix();
         let hex_url = hex::encode(self.0.as_ref());
 
         format!("{prefix}{hex_url}")
@@ -48,7 +73,7 @@ impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubeVideoUrl<T> {
 
 impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubePlaylistUrl<T> {
     fn uid(&self) -> String {
-        let prefix = DownloadKind::YoutubePlaylist.prefix();
+        let prefix = AudioKind::YoutubePlaylist.prefix();
         let hex_url = hex::encode(self.0.as_ref());
 
         format!("{prefix}{hex_url}")

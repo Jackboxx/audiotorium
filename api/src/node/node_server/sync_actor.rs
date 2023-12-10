@@ -18,7 +18,7 @@ use crate::{
 use actix::{AsyncContext, Handler, Recipient};
 
 use super::{
-    async_actor::{LocalAudioMetadata, UrlKind},
+    async_actor::{AudioUrl, LocalAudioMetadata},
     extract_queue_metadata, AudioNode,
 };
 
@@ -130,7 +130,7 @@ pub(super) fn handle_add_single_queue_item(
         }
         LocalAudioMetadata::NotFound { url } => {
             let download_info = match url {
-                UrlKind::Youtube(url) => DownloadRequiredInformation::YoutubeVideo {
+                AudioUrl::Youtube(url) => DownloadRequiredInformation::YoutubeVideo {
                     url: YoutubeVideoUrl(url),
                 },
             };

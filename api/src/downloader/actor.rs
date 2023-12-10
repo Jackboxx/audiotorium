@@ -18,7 +18,7 @@ use actix_rt::Arbiter;
 use sqlx::PgPool;
 use tokio::sync::Mutex;
 
-use super::download_identifier::YoutubeVideoUrl;
+use super::{download_identifier::YoutubeVideoUrl, info::OptionalDownloadInfo};
 
 const MAX_CONSECUTIVE_BATCHES: usize = 10;
 
@@ -80,16 +80,21 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
 
         match self.queue.try_lock() {
             Ok(mut queue) => {
-                let info = (&msg.required_info).into();
-                msg.addr.do_send(NotifyDownloadUpdate::Queued(info));
+                let info: OptionalDownloadInfo = (&msg.required_info).into();
+
+                if let Some(info) = info.into() {
+                    msg.addr.do_send(NotifyDownloadUpdate::Queued(info));
+                }
 
                 queue.push_back(msg);
             }
             Err(err) => {
                 let err_resp = err.into_err_resp("failed to add audio to download queue\nERROR:");
-                let info = msg.required_info.into();
-                msg.addr
-                    .do_send(NotifyDownloadUpdate::FailedToQueue((info, err_resp)));
+                let info: OptionalDownloadInfo = msg.required_info.into();
+                if let Some(info) = info.into() {
+                    msg.addr
+                        .do_send(NotifyDownloadUpdate::FailedToQueue((info, err_resp)));
+                }
             }
         }
     }
@@ -106,6 +111,9 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
         log::info!("download for {required_info:?} has started");
 
         match required_info {
+            DownloadRequiredInformation::StoredLocally { uid } => {
+                log::warn!("downloader received request for locally stored item with uid '{uid}'");
+            }
             DownloadRequiredInformation::YoutubeVideo { url } => {
                 process_single_youtube_video(&url, pool, &addr).await;
             }

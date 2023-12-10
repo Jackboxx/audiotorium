@@ -10,11 +10,13 @@ use crate::{
         playlist::get_playlist_video_urls, youtube_content_type, YoutubeContentType,
     },
     audio_playback::audio_item::{AudioMetaData, AudioPlayerQueueItem},
-    commands::node_commands::{AddQueueItemParams, DownloadIdentifier},
+    commands::node_commands::{AddQueueItemParams, AudioIdentifier},
     db_pool,
     downloader::{
         actor::{DownloadAudioRequest, NotifyDownloadUpdate},
-        download_identifier::{Identifier, YoutubePlaylistUrl, YoutubeVideoUrl},
+        download_identifier::{
+            AudioKind, AudioUid, Identifier, YoutubePlaylistUrl, YoutubeVideoUrl,
+        },
         DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
     node::node_server::{extract_queue_metadata, sync_actor::handle_add_single_queue_item},
@@ -36,22 +38,47 @@ pub enum LocalAudioMetadata {
         path: PathBuf,
     },
     NotFound {
-        url: UrlKind,
+        url: AudioUrl,
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum UrlKind {
+    Youtube,
+}
+
+#[derive(Debug)]
+pub enum AudioUrl {
     Youtube(Arc<str>),
 }
 
-type MetadataList = Vec<(Arc<str>, Option<AudioMetaData>)>;
+impl Clone for AudioUrl {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Youtube(url) => Self::Youtube(Arc::clone(url)),
+        }
+    }
+}
+
+impl AudioUrl {
+    fn inner(&self) -> Arc<str> {
+        match self {
+            Self::Youtube(url) => Arc::clone(url),
+        }
+    }
+
+    fn kind(&self) -> UrlKind {
+        match self {
+            Self::Youtube(_) => UrlKind::Youtube,
+        }
+    }
+}
 
 #[derive(Debug, Message)]
 #[rtype(result = "()")]
 struct LocalAudioMetadataList {
-    list_url: UrlKind,
-    metadata: MetadataList,
+    list_url: AudioUrl,
+    metadata: Vec<LocalAudioMetadata>,
 }
 
 impl Handler<AsyncAddQueueItem> for AudioNode {
@@ -63,6 +90,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
         enum MetadataQueryResult {
             Single(LocalAudioMetadata),
             Many(LocalAudioMetadataList),
+            ManyLocal(Vec<(AudioUid<Arc<str>>, AudioMetaData)>),
         }
 
         Box::pin(
@@ -70,6 +98,32 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                 let identifier = msg.0.identifier.get_required_info().await.unwrap();
 
                 let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier {
+                    DownloadRequiredInformation::StoredLocally { uid } => {
+                        let uid = AudioUid(uid);
+                        let kind = AudioKind::from_uid(&uid);
+
+                        match kind {
+                            Some(AudioKind::YoutubeVideo) => {
+                                match get_audio_metadata_from_db(&uid.0).await {
+                                    Ok(Some(metadata)) => {
+                                        Ok(MetadataQueryResult::Single(LocalAudioMetadata::Found {
+                                            metadata,
+                                            path: uid.to_path_with_ext(),
+                                        }))
+                                    }
+                                    Ok(None) => todo!(),
+                                    Err(err) => todo!(),
+                                }
+                            }
+                            Some(AudioKind::YoutubePlaylist) => {
+                                match get_playlist_items_from_db(&uid.0).await {
+                                    Ok(items) => Ok(MetadataQueryResult::ManyLocal(items)),
+                                    Err(err) => todo!(),
+                                }
+                            }
+                            None => todo!("error"),
+                        }
+                    }
                     DownloadRequiredInformation::YoutubeVideo { url } => {
                         let uid = url.uid();
                         get_audio_metadata_from_db(&uid).await.map(|res| {
@@ -80,7 +134,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                 })
                                 .unwrap_or(
                                     LocalAudioMetadata::NotFound {
-                                        url: UrlKind::Youtube(url.0),
+                                        url: AudioUrl::Youtube(url.0),
                                     },
                                 ),
                             )
@@ -96,23 +150,31 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                         let mut metadata_list = Vec::with_capacity(video_urls.len());
 
                         for url in video_urls {
-                            let audio_uid = YoutubeVideoUrl(url.clone()).uid();
+                            let youtube_url = YoutubeVideoUrl(url);
+                            let audio_uid = youtube_url.uid();
 
                             let metadata = get_audio_metadata_from_db(&audio_uid).await.unwrap();
-                            if metadata.is_some() {
-                                store_playlist_item_relation_if_not_exists(
-                                    &playlist_uid,
-                                    &audio_uid,
-                                )
-                                .await
-                                .unwrap();
+                            match metadata {
+                                Some(metadata) => {
+                                    metadata_list.push(LocalAudioMetadata::Found {
+                                        metadata,
+                                        path: youtube_url.to_path_with_ext(),
+                                    });
+                                    store_playlist_item_relation_if_not_exists(
+                                        &playlist_uid,
+                                        &audio_uid,
+                                    )
+                                    .await
+                                    .unwrap();
+                                }
+                                None => metadata_list.push(LocalAudioMetadata::NotFound {
+                                    url: AudioUrl::Youtube(youtube_url.0),
+                                }),
                             }
-
-                            metadata_list.push((url, metadata));
                         }
 
                         Ok(MetadataQueryResult::Many(LocalAudioMetadataList {
-                            list_url: UrlKind::Youtube(playlist_url.0),
+                            list_url: AudioUrl::Youtube(playlist_url.0),
                             metadata: metadata_list,
                         }))
                     }
@@ -132,13 +194,41 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                 Ok(MetadataQueryResult::Many(LocalAudioMetadataList { list_url, metadata })) => {
                     let download_addr = act.downloader_addr.clone().recipient();
 
-                    play_existing_playlist_items(act, &metadata);
+                    let audio_urls = metadata
+                        .iter()
+                        .filter_map(|data| {
+                            if let LocalAudioMetadata::NotFound { url } = data {
+                                Some(url.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let existing_metadata = metadata
+                        .into_iter()
+                        .filter_map(|data| match data {
+                            LocalAudioMetadata::Found { metadata, path } => Some((path, metadata)),
+                            _ => None,
+                        })
+                        .collect();
+
+                    play_existing_playlist_items(act, existing_metadata);
 
                     request_download_of_missing_items(
                         download_addr,
                         ctx.address().recipient(),
                         list_url,
-                        &metadata,
+                        audio_urls,
+                    );
+                }
+                Ok(MetadataQueryResult::ManyLocal(items)) => {
+                    play_existing_playlist_items(
+                        act,
+                        items
+                            .into_iter()
+                            .map(|(uid, m)| (uid.to_path_with_ext(), m))
+                            .collect(),
                     );
                 }
                 Err(err_resp) => {
@@ -149,54 +239,61 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
     } // _ => Box::pin(async { Ok(()) }.into_actor(self)),
 }
 
-fn play_existing_playlist_items(node: &mut AudioNode, metadata_list: &MetadataList) {
-    let prev_queue_len = node.player.queue().len();
-    for (url, metadata) in metadata_list {
-        if let Some(data) = metadata {
-            let audio_item = AudioPlayerQueueItem {
-                metadata: data.clone(),
-                locator: YoutubeVideoUrl(url).to_path_with_ext(),
-            };
-
-            // TODO handle error
-            node.player.push_to_queue(audio_item).unwrap();
-        }
+fn play_existing_playlist_items(
+    node: &mut AudioNode,
+    metadata_list: Vec<(PathBuf, AudioMetaData)>,
+) {
+    if metadata_list.is_empty() {
+        return;
     }
 
-    if prev_queue_len != node.player.queue().len() {
-        node.multicast(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
-            node.player.queue(),
-        )))
+    for (path, metadata) in metadata_list {
+        let audio_item = AudioPlayerQueueItem {
+            metadata,
+            locator: path,
+        };
+
+        // TODO handle error
+        node.player.push_to_queue(audio_item).unwrap();
     }
+
+    node.multicast(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
+        node.player.queue(),
+    )))
 }
 
 fn request_download_of_missing_items(
     downloader_addr: Recipient<DownloadAudioRequest>,
     receiver_addr: Recipient<NotifyDownloadUpdate>,
-    list_url: UrlKind,
-    metadata_list: &MetadataList,
+    list_url: AudioUrl,
+    audio_urls: Vec<AudioUrl>,
 ) {
-    match list_url {
-        UrlKind::Youtube(url) => {
-            let video_urls: Vec<_> = metadata_list
-                .iter()
-                .filter_map(|(url, metadata)| {
-                    if metadata.is_none() {
-                        Some(Arc::clone(url))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+    if audio_urls.is_empty() {
+        return;
+    }
 
-            if video_urls.is_empty() {
-                return;
+    let urls = audio_urls
+        .into_iter()
+        .flat_map(|url| {
+            if url.kind() != list_url.kind() {
+                log::warn!(
+                    "invalid url type '{:?}' in playlist of type '{:?}'",
+                    url.kind(),
+                    list_url.kind()
+                );
+                None
+            } else {
+                Some(url.inner())
             }
+        })
+        .collect();
 
+    match list_url {
+        AudioUrl::Youtube(url) => {
             let required_info =
                 DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
                     playlist_url: YoutubePlaylistUrl(url),
-                    video_urls,
+                    video_urls: urls,
                 });
 
             let request = DownloadAudioRequest {
@@ -209,9 +306,12 @@ fn request_download_of_missing_items(
     }
 }
 
-impl DownloadIdentifier {
+impl AudioIdentifier {
     async fn get_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
         let url = match self {
+            Self::Local { uid } => {
+                return Ok(DownloadRequiredInformation::StoredLocally { uid: uid.into() })
+            }
             Self::Youtube { url } => url,
         };
 
@@ -252,6 +352,45 @@ async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetaData>, 
     )
     .fetch_optional(db_pool())
     .await
+    .into_err_resp("")
+}
+
+async fn get_playlist_items_from_db(
+    playlist_uid: &str,
+) -> Result<Vec<(AudioUid<Arc<str>>, AudioMetaData)>, ErrorResponse> {
+    struct QueryResult {
+        identifier: Arc<str>,
+        name: Option<String>,
+        author: Option<String>,
+        duration: Option<i64>,
+        cover_art_url: Option<String>,
+    }
+
+    sqlx::query_as!(
+        QueryResult,
+        "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url 
+            FROM audio_metadata audio
+        INNER JOIN audio_playlist_item items 
+            ON items.playlist_identifier = $1",
+        playlist_uid
+    )
+    .fetch_all(db_pool())
+    .await
+    .map(|vec| {
+        vec.into_iter()
+            .map(|res| {
+                (
+                    AudioUid(res.identifier),
+                    AudioMetaData {
+                        name: res.name,
+                        author: res.author,
+                        duration: res.duration,
+                        cover_art_url: res.cover_art_url,
+                    },
+                )
+            })
+            .collect()
+    })
     .into_err_resp("")
 }
 
