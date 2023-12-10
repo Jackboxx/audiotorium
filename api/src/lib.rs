@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    sync::{Arc, OnceLock},
-};
+use std::{fmt::Display, sync::OnceLock};
 
 use actix::{Addr, Message};
 use brain::brain_server::AudioBrain;
@@ -19,26 +16,9 @@ pub mod database;
 pub mod downloader;
 pub mod message_send_handler;
 pub mod node;
+pub mod opt_arc;
 pub mod rest_data_access;
 pub mod utils;
-
-pub struct OptionArc<T: ?Sized> {
-    inner: Option<Arc<T>>,
-}
-
-impl<T: ?Sized> From<OptionArc<T>> for Option<Arc<T>> {
-    fn from(value: OptionArc<T>) -> Self {
-        value.inner
-    }
-}
-
-impl From<Option<String>> for OptionArc<str> {
-    fn from(value: Option<String>) -> Self {
-        Self {
-            inner: value.map(|str| str.into()),
-        }
-    }
-}
 
 pub static POOL: OnceLock<PgPool> = OnceLock::new(); // set on server start
 pub static YOUTUBE_API_KEY: OnceLock<String> = OnceLock::new(); // set on server start

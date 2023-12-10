@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::Deserialize;
 
 pub mod playlist;
@@ -6,15 +8,15 @@ pub mod video;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YoutubeSnippet {
-    pub title: String,
-    pub channel_title: String,
+    pub title: Arc<str>,
+    pub channel_title: Arc<str>,
     pub thumbnails: YoutubeMaxResThumbnail,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YoutubeStatus {
-    pub privacy_status: String,
+    pub privacy_status: Arc<str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +27,7 @@ pub struct YoutubeMaxResThumbnail {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YoutubeThumbnail {
-    pub url: String,
+    pub url: Arc<str>,
     pub width: u64,
     pub height: u64,
 }

@@ -2,24 +2,24 @@ use std::sync::Arc;
 
 use crate::{
     audio_playback::audio_item::AudioMetadata, db_pool, downloader::download_identifier::ItemUid,
-    ErrorResponse, IntoErrResp, OptionArc,
+    opt_arc::OptionArcStr, ErrorResponse, IntoErrResp,
 };
 
 use super::PlaylistMetadata;
 
 struct AudioQueryResult {
     identifier: Arc<str>,
-    name: Option<String>,
-    author: Option<String>,
+    name: OptionArcStr,
+    author: OptionArcStr,
     duration: Option<i64>,
-    cover_art_url: Option<String>,
+    cover_art_url: OptionArcStr,
 }
 
 struct PlaylistQueryResult {
     identifier: Arc<str>,
-    name: OptionArc<str>,
-    author: OptionArc<str>,
-    cover_art_url: OptionArc<str>,
+    name: OptionArcStr,
+    author: OptionArcStr,
+    cover_art_url: OptionArcStr,
 }
 
 impl From<AudioQueryResult> for (ItemUid<Arc<str>>, AudioMetadata) {

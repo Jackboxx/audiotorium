@@ -82,7 +82,7 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
 }
 
 fn is_public(status: &YoutubeStatus) -> bool {
-    status.privacy_status == "public"
+    status.privacy_status.as_ref() == "public"
 }
 
 fn extract_playlist_id(url: &str) -> Option<&str> {

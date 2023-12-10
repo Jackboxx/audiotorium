@@ -58,10 +58,10 @@ pub async fn download_and_store_youtube_audio_with_metadata(
     let key = url.uid();
     sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",
                     key,
-                    metadata.name,
-                    metadata.author,
+                    metadata.name.inner_as_ref(),
+                    metadata.author.inner_as_ref(),
                     metadata.duration,
-                    metadata.cover_art_url
+                    metadata.cover_art_url.inner_as_ref()
                 )
                 .execute(&mut *tx)
                 .await?;

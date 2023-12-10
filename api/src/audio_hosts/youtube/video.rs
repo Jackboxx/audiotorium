@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use serde::Deserialize;
 
@@ -16,7 +18,7 @@ pub struct YoutubeVideo {
 #[serde(rename_all = "camelCase")]
 pub struct YoutubeVideoContentDetails {
     #[serde(rename = "duration")]
-    pub duration_iso_8601: String,
+    pub duration_iso_8601: Arc<str>,
 }
 
 impl From<YoutubeVideo> for AudioMetadata {
@@ -33,9 +35,9 @@ impl From<YoutubeVideo> for AudioMetadata {
         };
 
         AudioMetadata {
-            name: Some(value.snippet.title),
-            author: Some(value.snippet.channel_title),
-            cover_art_url: Some(value.snippet.thumbnails.maxres.url),
+            name: Some(value.snippet.title).into(),
+            author: Some(value.snippet.channel_title).into(),
+            cover_art_url: Some(value.snippet.thumbnails.maxres.url).into(),
             duration,
         }
     }
