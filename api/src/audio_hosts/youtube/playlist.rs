@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use serde::Deserialize;
 
@@ -34,7 +36,7 @@ pub async fn get_playlist_metadata(url: &str, api_key: &str) -> anyhow::Result<Y
     Ok(playlist.snippet)
 }
 
-pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result<Vec<String>> {
+pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result<Arc<[Arc<str>]>> {
     let Some(playlist_id) = extract_playlist_id(url) else {
         log::error!("failed to extract 'playlist id' from youtube playlist with url {url}");
         return Err(anyhow!("faild to download youtube playlist {url}"));
@@ -73,10 +75,13 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
         .items
         .into_iter()
         .filter_map(|item| {
-            is_public(&item.status).then_some(format!(
-                "https://www.youtube.com/watch?v={id}",
-                id = item.snippet.resource_id.video_id
-            ))
+            is_public(&item.status).then_some(
+                format!(
+                    "https://www.youtube.com/watch?v={id}",
+                    id = item.snippet.resource_id.video_id
+                )
+                .into(),
+            )
         })
         .collect())
 }

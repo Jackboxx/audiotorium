@@ -39,10 +39,10 @@ pub async fn get_playlists(
     match get_all_playlist_metadata_from_db(limit, offset).await {
         Ok(items) => {
             let result: Vec<StoredPlaylistData> = items
-                .into_iter()
+                .iter()
                 .map(|(uid, metadata)| StoredPlaylistData {
-                    uid: uid.0,
-                    metadata,
+                    uid: Arc::clone(&uid.0),
+                    metadata: metadata.clone(),
                 })
                 .collect();
 
@@ -67,8 +67,8 @@ pub async fn get_audio(
             let result: Vec<StoredAudioData> = items
                 .into_iter()
                 .map(|(uid, metadata)| StoredAudioData {
-                    uid: uid.0,
-                    metadata,
+                    uid: Arc::clone(&uid.0),
+                    metadata: metadata.clone(),
                 })
                 .collect();
 
@@ -94,8 +94,8 @@ pub async fn get_audio_in_playlist(
             let result: Vec<StoredAudioData> = items
                 .into_iter()
                 .map(|(uid, metadata)| StoredAudioData {
-                    uid: uid.0,
-                    metadata,
+                    uid: Arc::clone(&uid.0),
+                    metadata: metadata.clone(),
                 })
                 .collect();
 

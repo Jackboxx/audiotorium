@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
     Running, StreamHandler, WrapFuture,
@@ -21,7 +23,7 @@ use super::brain_server::AudioBrain;
 pub struct AudioBrainSession {
     id: usize,
     server_addr: Addr<AudioBrain>,
-    wanted_info: Vec<AudioBrainInfoStreamType>,
+    wanted_info: Arc<[AudioBrainInfoStreamType]>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -29,12 +31,16 @@ pub struct AudioBrainSession {
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum BrainSessionWsResponse {
     SessionConnectedResponse {
-        node_info: Option<Vec<AudioNodeInfo>>,
+        #[ts(type = "Array<AudioNodeInfo>")]
+        node_info: Option<Arc<[AudioNodeInfo]>>,
     },
 }
 
 impl AudioBrainSession {
-    pub fn new(server_addr: Addr<AudioBrain>, wanted_info: Vec<AudioBrainInfoStreamType>) -> Self {
+    pub fn new(
+        server_addr: Addr<AudioBrain>,
+        wanted_info: Arc<[AudioBrainInfoStreamType]>,
+    ) -> Self {
         Self {
             id: usize::MAX,
             server_addr,
@@ -53,7 +59,7 @@ impl Actor for AudioBrainSession {
         self.server_addr
             .send(BrainConnectMessage {
                 addr,
-                wanted_info: self.wanted_info.clone(),
+                wanted_info: Arc::clone(&self.wanted_info),
             })
             .into_actor(self)
             .then(|res, act, ctx| {

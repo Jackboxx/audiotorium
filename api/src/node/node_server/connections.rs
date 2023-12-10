@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::{Addr, Handler, Message, MessageResponse};
 
 use crate::{
@@ -13,7 +15,7 @@ use super::{extract_queue_metadata, AudioNode};
 #[rtype(result = "NodeConnectResponse")]
 pub struct NodeConnectMessage {
     pub addr: Addr<AudioNodeSession>,
-    pub wanted_info: Vec<AudioNodeInfoStreamType>,
+    pub wanted_info: Arc<[AudioNodeInfoStreamType]>,
 }
 
 #[derive(Debug, Clone, Message)]

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::Message;
 use actix_web::{
     get,
@@ -38,7 +40,7 @@ pub enum AudioNodeInfoStreamType {
 pub enum AudioNodeInfoStreamMessage {
     // can't use SerializableQueue due to issue discussed
     // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
-    Queue(Vec<AudioMetadata>),
+    Queue(#[ts(type = "Array<AudioMetadata>")] Arc<[AudioMetadata]>),
     Health(AudioNodeHealth),
     Download(RunningDownloadInfo),
     AudioStateInfo(AudioStateInfo),
@@ -48,8 +50,11 @@ pub enum AudioNodeInfoStreamMessage {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct RunningDownloadInfo {
-    pub active: Vec<DownloadInfo>,
-    pub failed: Vec<(DownloadInfo, ErrorResponse)>,
+    #[ts(type = "Array<DownloadInfo>")]
+    pub active: Arc<[DownloadInfo]>,
+
+    #[ts(type = "Array<[DownloadInfo, ErrorResponse]>")]
+    pub failed: Arc<[(DownloadInfo, ErrorResponse)]>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -63,7 +68,7 @@ pub struct AudioStateInfo {
 #[derive(Debug, Clone, Deserialize)]
 struct StreamWantedInfoParams {
     #[serde(deserialize_with = "deserialize_stringified_list")]
-    wanted_info: Vec<AudioNodeInfoStreamType>,
+    wanted_info: Arc<[AudioNodeInfoStreamType]>,
 }
 
 pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInfoStreamType {

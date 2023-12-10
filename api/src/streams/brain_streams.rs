@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::Message;
 use actix_web::{
     get,
@@ -24,13 +26,13 @@ pub enum AudioBrainInfoStreamType {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[rtype(result = "()")]
 pub enum AudioBrainInfoStreamMessage {
-    NodeInfo(Vec<AudioNodeInfo>),
+    NodeInfo(Arc<[AudioNodeInfo]>),
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct StreamWantedInfoParams {
     #[serde(deserialize_with = "deserialize_stringified_list")]
-    wanted_info: Vec<AudioBrainInfoStreamType>,
+    wanted_info: Arc<[AudioBrainInfoStreamType]>,
 }
 
 pub fn get_type_of_stream_data(msg: &AudioBrainInfoStreamMessage) -> AudioBrainInfoStreamType {

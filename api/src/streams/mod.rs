@@ -1,4 +1,5 @@
 use core::fmt;
+use std::sync::Arc;
 
 use serde::de::{self, IntoDeserializer};
 
@@ -7,7 +8,7 @@ pub mod node_streams;
 
 pub fn deserialize_stringified_list<'de, D, I>(
     deserializer: D,
-) -> std::result::Result<Vec<I>, D::Error>
+) -> std::result::Result<Arc<[I]>, D::Error>
 where
     D: de::Deserializer<'de>,
     I: de::DeserializeOwned,
@@ -37,5 +38,7 @@ where
         }
     }
 
-    deserializer.deserialize_any(StringVecVisitor(std::marker::PhantomData::<I>))
+    deserializer
+        .deserialize_any(StringVecVisitor(std::marker::PhantomData::<I>))
+        .map(|vec| vec.into())
 }

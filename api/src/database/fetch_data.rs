@@ -63,7 +63,7 @@ pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadat
 pub async fn get_all_audio_metadata_from_db(
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<(ItemUid<Arc<str>>, AudioMetadata)>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, ErrorResponse> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -83,7 +83,7 @@ pub async fn get_all_audio_metadata_from_db(
 pub async fn get_all_playlist_metadata_from_db(
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<(ItemUid<Arc<str>>, PlaylistMetadata)>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, PlaylistMetadata)]>, ErrorResponse> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -104,7 +104,7 @@ pub async fn get_playlist_items_from_db(
     playlist_uid: &str,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<(ItemUid<Arc<str>>, AudioMetadata)>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, ErrorResponse> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse};
 
@@ -37,7 +37,7 @@ pub enum AudioNodeToBrainMessage {
 #[rtype(result = "BrainConnectResponse")]
 pub struct BrainConnectMessage {
     pub addr: Addr<AudioBrainSession>,
-    pub wanted_info: Vec<AudioBrainInfoStreamType>,
+    pub wanted_info: Arc<[AudioBrainInfoStreamType]>,
 }
 
 #[derive(Debug, Clone, MessageResponse)]

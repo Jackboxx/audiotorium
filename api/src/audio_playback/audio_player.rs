@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::Addr;
 use anyhow::anyhow;
 use cpal::{
@@ -24,7 +26,7 @@ use super::audio_item::{AudioDataLocator, AudioMetadata, AudioPlayerQueueItem};
 
 type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
 
-pub type SerializableQueue = Vec<AudioMetadata>;
+pub type SerializableQueue = Arc<[AudioMetadata]>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
     source_name: String,

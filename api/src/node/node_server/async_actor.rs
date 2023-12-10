@@ -61,7 +61,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
         enum MetadataQueryResult {
             Single(LocalAudioMetadata),
             Many(LocalAudioMetadataList),
-            ManyLocal(Vec<(ItemUid<Arc<str>>, AudioMetadata)>),
+            ManyLocal(Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>),
         }
 
         Box::pin(
@@ -136,7 +136,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
                         let mut metadata_list = Vec::with_capacity(video_urls.len());
 
-                        for url in video_urls {
+                        for url in video_urls.iter() {
                             let youtube_url = YoutubeVideoUrl(url);
                             let audio_uid = youtube_url.uid();
 
@@ -155,7 +155,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                     .unwrap();
                                 }
                                 None => metadata_list.push(LocalAudioMetadata::NotFound {
-                                    url: AudioUrl::Youtube(youtube_url.0),
+                                    url: AudioUrl::Youtube(Arc::clone(youtube_url.0)),
                                 }),
                             }
                         }
@@ -213,8 +213,8 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                     play_existing_playlist_items(
                         act,
                         items
-                            .into_iter()
-                            .map(|(uid, m)| (uid.to_path_with_ext(), m))
+                            .iter()
+                            .map(|(uid, m)| (uid.to_path_with_ext(), m.clone()))
                             .collect(),
                     );
                 }
@@ -228,13 +228,13 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
 fn play_existing_playlist_items(
     node: &mut AudioNode,
-    metadata_list: Vec<(PathBuf, AudioMetadata)>,
+    metadata_list: Arc<[(PathBuf, AudioMetadata)]>,
 ) {
     if metadata_list.is_empty() {
         return;
     }
 
-    for (path, metadata) in metadata_list {
+    for (path, metadata) in metadata_list.iter().cloned() {
         let audio_item = AudioPlayerQueueItem {
             metadata,
             locator: path,
@@ -253,7 +253,7 @@ fn request_download_of_missing_items(
     downloader_addr: Recipient<DownloadAudioRequest>,
     receiver_addr: Recipient<NotifyDownloadUpdate>,
     list_url: AudioUrl,
-    audio_urls: Vec<AudioUrl>,
+    audio_urls: Arc<[AudioUrl]>,
 ) {
     if audio_urls.is_empty() {
         return;
@@ -323,7 +323,7 @@ impl AudioIdentifier {
                 Ok(DownloadRequiredInformation::YoutubePlaylist(
                     YoutubePlaylistDownloadInfo {
                         playlist_url: YoutubePlaylistUrl(url.into()),
-                        video_urls: urls.into_iter().map(Into::into).collect(),
+                        video_urls: urls,
                     },
                 ))
             }

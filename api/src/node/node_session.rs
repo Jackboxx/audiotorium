@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
     Running, StreamHandler, WrapFuture,
@@ -23,7 +25,7 @@ use super::{health::AudioNodeHealth, node_server::AudioNode};
 pub struct AudioNodeSession {
     id: usize,
     node_addr: Addr<AudioNode>,
-    wanted_info: Vec<AudioNodeInfoStreamType>,
+    wanted_info: Arc<[AudioNodeInfoStreamType]>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -34,7 +36,8 @@ pub enum NodeSessionWsResponse {
     SessionConnectedResponse {
         // can't use SerializableQueue due to issue discussed
         // here: https://github.com/Aleph-Alpha/ts-rs/issues/70
-        queue: Option<Vec<AudioMetadata>>,
+        #[ts(type = "Array<AudioMetadata>")]
+        queue: Option<Arc<[AudioMetadata]>>,
         health: Option<AudioNodeHealth>,
         downloads: Option<RunningDownloadInfo>,
         audio_state_info: Option<AudioStateInfo>,
@@ -42,7 +45,7 @@ pub enum NodeSessionWsResponse {
 }
 
 impl AudioNodeSession {
-    pub fn new(node_addr: Addr<AudioNode>, wanted_info: Vec<AudioNodeInfoStreamType>) -> Self {
+    pub fn new(node_addr: Addr<AudioNode>, wanted_info: Arc<[AudioNodeInfoStreamType]>) -> Self {
         Self {
             id: usize::MAX,
             node_addr,
@@ -61,7 +64,7 @@ impl Actor for AudioNodeSession {
         self.node_addr
             .send(NodeConnectMessage {
                 addr,
-                wanted_info: self.wanted_info.clone(),
+                wanted_info: Arc::clone(&self.wanted_info),
             })
             .into_actor(self)
             .then(|res, act, ctx| {

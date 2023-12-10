@@ -23,5 +23,5 @@ pub enum DownloadRequiredInformation {
 #[derive(Debug)]
 pub struct YoutubePlaylistDownloadInfo {
     pub playlist_url: YoutubePlaylistUrl<Arc<str>>,
-    pub video_urls: Vec<Arc<str>>,
+    pub video_urls: Arc<[Arc<str>]>,
 }

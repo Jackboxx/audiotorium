@@ -123,7 +123,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
             }) => {
                 let (videos_to_process, videos_for_next_batch) =
                     if MAX_CONSECUTIVE_BATCHES > video_urls.len() {
-                        (video_urls.as_slice(), Default::default())
+                        (video_urls.as_ref(), Default::default())
                     } else {
                         video_urls.split_at(MAX_CONSECUTIVE_BATCHES)
                     };
@@ -174,7 +174,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     let next_batch =
                         DownloadRequiredInformation::YoutubePlaylist(YoutubePlaylistDownloadInfo {
                             playlist_url: playlist_url.clone(),
-                            video_urls: videos_for_next_batch.to_vec(),
+                            video_urls: videos_for_next_batch.into(),
                         });
 
                     addr.do_send(NotifyDownloadUpdate::BatchUpdated {
