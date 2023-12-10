@@ -4,9 +4,17 @@ use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct OptionArcStr {
     inner: Option<Arc<str>>,
+}
+
+impl Clone for OptionArcStr {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.as_ref().map(|val| Arc::clone(val)),
+        }
+    }
 }
 
 impl From<OptionArcStr> for Option<Arc<str>> {
