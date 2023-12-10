@@ -9,7 +9,7 @@ use websocket::{ClientBuilder, OwnedMessage};
 use audio_manager_api::{
     audio_playback::audio_player::LoopBounds,
     commands::node_commands::{
-        AddQueueItemParams, AudioNodeCommand, DownloadIdentifierParam, LoopQueueParams,
+        AddQueueItemParams, AudioIdentifier, AudioNodeCommand, LoopQueueParams,
         MoveQueueItemParams, PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
         SetAudioVolumeParams,
     },
@@ -85,7 +85,9 @@ pub enum SendConnectionType {
 pub enum CliNodeCommand {
     AddQueueItem {
         #[arg(short, long)]
-        url: String,
+        identifier: String,
+        #[arg(short, long)]
+        local: bool,
     },
     RemoveQueueItem {
         index: usize,
@@ -177,10 +179,16 @@ impl Action {
 impl From<CliNodeCommand> for AudioNodeCommand {
     fn from(value: CliNodeCommand) -> Self {
         match value {
-            CliNodeCommand::AddQueueItem { url } => {
-                AudioNodeCommand::AddQueueItem(AddQueueItemParams {
-                    identifier: DownloadIdentifierParam::Youtube { url },
-                })
+            CliNodeCommand::AddQueueItem { identifier, local } => {
+                if local {
+                    AudioNodeCommand::AddQueueItem(AddQueueItemParams {
+                        identifier: AudioIdentifier::Local { uid: identifier },
+                    })
+                } else {
+                    AudioNodeCommand::AddQueueItem(AddQueueItemParams {
+                        identifier: AudioIdentifier::Youtube { url: identifier },
+                    })
+                }
             }
             CliNodeCommand::RemoveQueueItem { index } => {
                 AudioNodeCommand::RemoveQueueItem(RemoveQueueItemParams { index })
