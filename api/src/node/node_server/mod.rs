@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
@@ -46,6 +47,16 @@ pub struct AudioNodeInfo {
     pub health: AudioNodeHealth,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum UrlKindByProvider {
+    Youtube,
+}
+
+#[derive(Debug)]
+pub enum AudioUrl {
+    Youtube(Arc<str>),
+}
+
 impl Actor for AudioNode {
     type Context = Context<Self>;
 
@@ -53,6 +64,28 @@ impl Actor for AudioNode {
         log::info!("stared new 'AudioNode', CONTEXT: {ctx:?}");
 
         self.player.set_addr(Some(ctx.address()))
+    }
+}
+
+impl Clone for AudioUrl {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Youtube(url) => Self::Youtube(Arc::clone(url)),
+        }
+    }
+}
+
+impl AudioUrl {
+    fn inner(&self) -> Arc<str> {
+        match self {
+            Self::Youtube(url) => Arc::clone(url),
+        }
+    }
+
+    fn kind(&self) -> UrlKindByProvider {
+        match self {
+            Self::Youtube(_) => UrlKindByProvider::Youtube,
+        }
     }
 }
 
@@ -109,6 +142,11 @@ impl AudioNode {
             }
         }
     }
+}
+
+// remove trailing parameters from URL
+pub fn clean_url(url: &str) -> &str {
+    url.split_once("&").map(|(str, _)| str).unwrap_or(url)
 }
 
 pub fn extract_queue_metadata<ADL: AudioDataLocator>(

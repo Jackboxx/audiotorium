@@ -25,7 +25,7 @@ use crate::{
     yt_api_key, ErrorResponse, IntoErrResp,
 };
 
-use super::AudioNode;
+use super::{clean_url, AudioNode, AudioUrl};
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
@@ -40,38 +40,6 @@ pub enum LocalAudioMetadata {
     NotFound {
         url: AudioUrl,
     },
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum UrlKind {
-    Youtube,
-}
-
-#[derive(Debug)]
-pub enum AudioUrl {
-    Youtube(Arc<str>),
-}
-
-impl Clone for AudioUrl {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Youtube(url) => Self::Youtube(Arc::clone(url)),
-        }
-    }
-}
-
-impl AudioUrl {
-    fn inner(&self) -> Arc<str> {
-        match self {
-            Self::Youtube(url) => Arc::clone(url),
-        }
-    }
-
-    fn kind(&self) -> UrlKind {
-        match self {
-            Self::Youtube(_) => UrlKind::Youtube,
-        }
-    }
 }
 
 #[derive(Debug, Message)]
@@ -95,7 +63,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
         Box::pin(
             async move {
-                let identifier = msg.0.identifier.get_required_info().await.unwrap();
+                let identifier = msg.0.identifier.into_required_info().await.unwrap();
 
                 let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier {
                     DownloadRequiredInformation::StoredLocally { uid } => {
@@ -323,7 +291,7 @@ fn request_download_of_missing_items(
 }
 
 impl AudioIdentifier {
-    async fn get_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
+    async fn into_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
         let url = match self {
             Self::Local { uid } => {
                 return Ok(DownloadRequiredInformation::StoredLocally { uid: uid.into() })
@@ -332,6 +300,7 @@ impl AudioIdentifier {
         };
 
         let content_type = youtube_content_type(url.as_str());
+        let url = clean_url(&url);
 
         match content_type {
             YoutubeContentType::Video => Ok(DownloadRequiredInformation::YoutubeVideo {

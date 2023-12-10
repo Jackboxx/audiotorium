@@ -17,10 +17,7 @@ use crate::{
 
 use actix::{AsyncContext, Handler, Recipient};
 
-use super::{
-    async_actor::{AudioUrl, LocalAudioMetadata},
-    extract_queue_metadata, AudioNode,
-};
+use super::{async_actor::LocalAudioMetadata, extract_queue_metadata, AudioNode, AudioUrl};
 
 impl Handler<AudioNodeCommand> for AudioNode {
     type Result = Result<(), ErrorResponse>;
