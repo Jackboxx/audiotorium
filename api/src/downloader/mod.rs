@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use self::download_identifier::{YoutubePlaylistUrl, YoutubeVideoUrl};
+
 pub mod actor;
 pub mod download_identifier;
 pub mod info;
@@ -8,3 +12,15 @@ pub const AUDIO_DIR: &str = "audio";
 
 #[cfg(debug_assertions)]
 pub const AUDIO_DIR: &str = "audio-dev";
+
+#[derive(Debug)]
+pub enum DownloadRequiredInformation {
+    YoutubeVideo { url: YoutubeVideoUrl<Arc<str>> },
+    YoutubePlaylist(YoutubePlaylistDownloadInfo),
+}
+
+#[derive(Debug)]
+pub struct YoutubePlaylistDownloadInfo {
+    pub playlist_url: YoutubePlaylistUrl<Arc<str>>,
+    pub video_urls: Vec<Arc<str>>,
+}

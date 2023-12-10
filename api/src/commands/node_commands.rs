@@ -42,7 +42,7 @@ pub enum AudioNodeCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../app/src/api-types/")]
-pub enum DownloadIdentifierParam {
+pub enum DownloadIdentifier {
     Youtube { url: String },
 }
 
@@ -50,7 +50,7 @@ pub enum DownloadIdentifierParam {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct AddQueueItemParams {
-    pub identifier: DownloadIdentifierParam,
+    pub identifier: DownloadIdentifier,
 }
 
 #[derive(Debug, Clone, Serialize, TS, Deserialize)]

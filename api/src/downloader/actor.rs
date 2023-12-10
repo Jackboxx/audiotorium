@@ -2,11 +2,10 @@ use crate::{
     audio_playback::audio_item::AudioMetaData,
     db_pool,
     downloader::{
-        download_identifier::{
-            DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo,
-        },
+        download_identifier::Identifier,
         info::DownloadInfo,
         youtube::{download_and_store_youtube_audio_with_metadata, process_single_youtube_video},
+        DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
     node::node_server::async_actor::store_playlist_item_relation_if_not_exists,
     utils::log_msg_received,
@@ -32,7 +31,7 @@ pub struct AudioDownloader {
 #[rtype(result = "()")]
 pub struct DownloadAudioRequest {
     pub addr: Recipient<NotifyDownloadUpdate>,
-    pub identifier: DownloadRequiredInformation,
+    pub required_info: DownloadRequiredInformation,
 }
 
 type SingleDownloadFinished =
@@ -81,14 +80,14 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
 
         match self.queue.try_lock() {
             Ok(mut queue) => {
-                let info = (&msg.identifier).into();
+                let info = (&msg.required_info).into();
                 msg.addr.do_send(NotifyDownloadUpdate::Queued(info));
 
                 queue.push_back(msg);
             }
             Err(err) => {
                 let err_resp = err.into_err_resp("failed to add audio to download queue\nERROR:");
-                let info = msg.identifier.into();
+                let info = msg.required_info.into();
                 msg.addr
                     .do_send(NotifyDownloadUpdate::FailedToQueue((info, err_resp)));
             }
@@ -101,11 +100,12 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
 
     if let Some(req) = queue.pop_front() {
         let DownloadAudioRequest {
-            addr, identifier, ..
+            addr,
+            required_info,
         } = req;
-        log::info!("download for {identifier:?} has started");
+        log::info!("download for {required_info:?} has started");
 
-        match identifier {
+        match required_info {
             DownloadRequiredInformation::YoutubeVideo { url } => {
                 process_single_youtube_video(&url, pool, &addr).await;
             }
@@ -178,7 +178,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
 
                     queue.push_back(DownloadAudioRequest {
                         addr,
-                        identifier: next_batch,
+                        required_info: next_batch,
                     });
                 }
             }

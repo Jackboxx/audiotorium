@@ -6,7 +6,8 @@ use crate::{
     commands::node_commands::{AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams},
     downloader::{
         actor::{DownloadAudioRequest, NotifyDownloadUpdate},
-        download_identifier::{DownloadRequiredInformation, YoutubeVideoUrl},
+        download_identifier::YoutubeVideoUrl,
+        DownloadRequiredInformation,
     },
     node::node_server::async_actor::AsyncAddQueueItem,
     streams::node_streams::AudioNodeInfoStreamMessage,
@@ -136,7 +137,7 @@ pub(super) fn handle_add_single_queue_item(
 
             node.downloader_addr.do_send(DownloadAudioRequest {
                 addr: node_addr,
-                identifier: download_info,
+                required_info: download_info,
             });
 
             return None;

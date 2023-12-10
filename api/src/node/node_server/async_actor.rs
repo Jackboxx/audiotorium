@@ -10,14 +10,12 @@ use crate::{
         playlist::get_playlist_video_urls, youtube_content_type, YoutubeContentType,
     },
     audio_playback::audio_item::{AudioMetaData, AudioPlayerQueueItem},
-    commands::node_commands::{AddQueueItemParams, DownloadIdentifierParam},
+    commands::node_commands::{AddQueueItemParams, DownloadIdentifier},
     db_pool,
     downloader::{
         actor::{DownloadAudioRequest, NotifyDownloadUpdate},
-        download_identifier::{
-            DownloadRequiredInformation, Identifier, YoutubePlaylistDownloadInfo,
-            YoutubePlaylistUrl, YoutubeVideoUrl,
-        },
+        download_identifier::{Identifier, YoutubePlaylistUrl, YoutubeVideoUrl},
+        DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
     node::node_server::{extract_queue_metadata, sync_actor::handle_add_single_queue_item},
     streams::node_streams::AudioNodeInfoStreamMessage,
@@ -203,7 +201,7 @@ fn request_download_of_missing_items(
 
             let request = DownloadAudioRequest {
                 addr: receiver_addr,
-                identifier: required_info,
+                required_info,
             };
 
             downloader_addr.do_send(request); // TODO handle mailbox full
@@ -211,7 +209,7 @@ fn request_download_of_missing_items(
     }
 }
 
-impl DownloadIdentifierParam {
+impl DownloadIdentifier {
     async fn get_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
         let url = match self {
             Self::Youtube { url } => url,

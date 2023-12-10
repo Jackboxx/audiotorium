@@ -3,7 +3,7 @@ use std::{borrow::Borrow, sync::Arc};
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::download_identifier::{DownloadRequiredInformation, YoutubePlaylistDownloadInfo};
+use super::{DownloadRequiredInformation, YoutubePlaylistDownloadInfo};
 
 #[derive(Debug, Clone, Eq, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]

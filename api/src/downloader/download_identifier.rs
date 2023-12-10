@@ -17,32 +17,11 @@ pub trait Identifier {
 }
 
 #[derive(Debug)]
-pub enum DownloadRequiredInformation {
-    YoutubeVideo { url: YoutubeVideoUrl<Arc<str>> },
-    YoutubePlaylist(YoutubePlaylistDownloadInfo),
-}
-
-#[derive(Debug)]
 pub enum DownloadKind {
     YoutubeVideo,
     YoutubePlaylist,
 }
 
-#[derive(Debug)]
-pub struct YoutubePlaylistDownloadInfo {
-    pub playlist_url: YoutubePlaylistUrl<Arc<str>>,
-    pub video_urls: Vec<Arc<str>>,
-}
-
-// impl DownloadKind {
-//     fn from<T: AsRef<str>, V: Borrow<DownloadRequiredInformation<T>>>(ident: V) -> Self {
-//         match ident.borrow() {
-//             DownloadRequiredInformation::YoutubeVideo { .. } => DownloadKind::YoutubeVideo,
-//             DownloadRequiredInformation::YoutubePlaylist { .. } => DownloadKind::YoutubePlaylist,
-//         }
-//     }
-// }
-//
 impl DownloadKind {
     fn prefix(&self) -> &str {
         match self {
