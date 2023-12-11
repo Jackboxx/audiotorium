@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use serde::Deserialize;
 
-use crate::audio_playback::audio_item::AudioMetadata;
+use crate::{
+    audio_hosts::youtube::{get_api_data, parse_api_data},
+    audio_playback::audio_item::AudioMetadata,
+    error::{AppError, AppErrorKind},
+};
 
 use super::YoutubeSnippet;
 
@@ -57,16 +60,19 @@ impl YoutubeVideoContentDetails {
     }
 }
 
-pub async fn get_video_metadata(url: &str, api_key: &str) -> anyhow::Result<YoutubeVideo> {
+pub async fn get_video_metadata(url: &str, api_key: &str) -> Result<YoutubeVideo, AppError> {
     let Some(watch_id) = extract_watch_id(url) else {
-        log::error!("failed to extract 'watch id' from youtube video with url {url}");
-        return Err(anyhow!("faild to download youtube video {url}"));
+        return Err(AppError::new(
+            AppErrorKind::Download,
+            "failed to get 'watch id' from youtube video url",
+            &[&format!("URL: {url}")],
+        ));
     };
 
     let api_url =
         format!("https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={watch_id}&key={api_key}");
 
-    let resp_text = reqwest::get(api_url).await?.text().await?;
+    let resp_text = get_api_data(&api_url).await?;
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -74,9 +80,13 @@ pub async fn get_video_metadata(url: &str, api_key: &str) -> anyhow::Result<Yout
         items: Vec<YoutubeVideo>,
     }
 
-    let videos: YoutubeVideoItems = serde_json::from_str(&resp_text)?;
+    let videos: YoutubeVideoItems = parse_api_data(&resp_text, &api_url)?;
     let Some(video) = videos.items.into_iter().next() else {
-        return Err(anyhow!("no youtube video found for id {watch_id}"));
+        return Err(AppError::new(
+            AppErrorKind::Download,
+            "failed to find youtube video",
+            &[&format!("URL: {url}")],
+        ));
     };
 
     Ok(video)

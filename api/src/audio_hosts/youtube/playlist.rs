@@ -1,20 +1,25 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use serde::Deserialize;
 
-use crate::audio_hosts::youtube::YoutubeStatus;
+use crate::{
+    audio_hosts::youtube::{get_api_data, parse_api_data, YoutubeStatus},
+    error::{AppError, AppErrorKind},
+};
 
 use super::YoutubeSnippet;
 
-pub async fn get_playlist_metadata(url: &str, api_key: &str) -> anyhow::Result<YoutubeSnippet> {
+pub async fn get_playlist_metadata(url: &str, api_key: &str) -> Result<YoutubeSnippet, AppError> {
     let Some(playlist_id) = extract_playlist_id(url) else {
-        log::error!("failed to extract 'playlist id' from youtube playlist with url {url}");
-        return Err(anyhow!("faild to download youtube playlist {url}"));
+        return Err(AppError::new(
+            AppErrorKind::Api,
+            "failed to get 'playlist id' from youtube playlist url",
+            &[&format!("URL: {url}")],
+        ));
     };
 
     let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlists?part=snippet&maxResults=1&id={playlist_id}&key={api_key}");
-    let resp_text = reqwest::get(api_url).await?.text().await?;
+    let resp_text = get_api_data(&api_url).await?;
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -28,22 +33,33 @@ pub async fn get_playlist_metadata(url: &str, api_key: &str) -> anyhow::Result<Y
         snippet: YoutubeSnippet,
     }
 
-    let playlists: YoutubePlaylistItems = serde_json::from_str(&resp_text)?;
+    let playlists: YoutubePlaylistItems = parse_api_data(&resp_text, &api_url)?;
+
     let Some(playlist) = playlists.items.into_iter().next() else {
-        return Err(anyhow!("no youtube playlist found for id {playlist_id}"));
+        return Err(AppError::new(
+            AppErrorKind::Api,
+            "failed to find youtube playlist",
+            &[&format!("URL: {url}")],
+        ));
     };
 
     Ok(playlist.snippet)
 }
 
-pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result<Arc<[Arc<str>]>> {
+pub async fn get_playlist_video_urls(
+    url: &str,
+    api_key: &str,
+) -> Result<Arc<[Arc<str>]>, AppError> {
     let Some(playlist_id) = extract_playlist_id(url) else {
-        log::error!("failed to extract 'playlist id' from youtube playlist with url {url}");
-        return Err(anyhow!("faild to download youtube playlist {url}"));
+        return Err(AppError::new(
+            AppErrorKind::Api,
+            "faild to download youtube playlist content",
+            &[&format!("URL: {url}")],
+        ));
     };
 
     let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet,status&maxResults=50&playlistId={playlist_id}&key={api_key}");
-    let resp_text = reqwest::get(api_url).await?.text().await?;
+    let resp_text = get_api_data(&api_url).await?;
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -70,7 +86,8 @@ pub async fn get_playlist_video_urls(url: &str, api_key: &str) -> anyhow::Result
         video_id: String,
     }
 
-    let playlist_items: YoutubePlaylistItems = serde_json::from_str(&resp_text)?;
+    let playlist_items: YoutubePlaylistItems = parse_api_data(&resp_text, &api_url)?;
+
     Ok(playlist_items
         .items
         .into_iter()

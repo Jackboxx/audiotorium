@@ -25,6 +25,7 @@ pub struct AppError {
 #[ts(export, export_to = "../app/src/api-types/")]
 pub enum AppErrorKind {
     Queue,
+    Api,
     LocalData,
     Database,
     Download,
@@ -72,10 +73,11 @@ impl Display for AppError {
 impl Display for AppErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self {
+            Self::Api => "API ERROR",
             Self::Queue => "QUEUE ERROR",
-            Self::LocalData => "LOCAL DATA ERROR",
             Self::Database => "DATABASE ERROR",
             Self::Download => "DOWNLOAD ERROR",
+            Self::LocalData => "LOCAL DATA ERROR",
         };
 
         write!(f, "{str}")

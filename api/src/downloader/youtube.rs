@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use actix::Recipient;
-use anyhow::anyhow;
 use sqlx::PgPool;
 
 use crate::{
@@ -65,7 +64,7 @@ pub async fn process_single_youtube_video(
 pub async fn download_and_store_youtube_audio_with_metadata(
     url: &YoutubeVideoUrl<impl AsRef<str> + std::fmt::Debug>,
     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
-) -> anyhow::Result<AudioMetadata> {
+) -> Result<AudioMetadata, AppError> {
     let metadata: AudioMetadata =
         AudioMetadata::from(get_video_metadata(url.0.as_ref(), yt_api_key()).await?);
 
@@ -78,22 +77,21 @@ pub async fn download_and_store_youtube_audio_with_metadata(
                     metadata.cover_art_url.inner_as_ref()
                 )
                 .execute(&mut *tx)
-                .await?;
+                .await.into_app_err("failed to store audio metadata", AppErrorKind::Database, 
+                                    &[&format!("UID: {key}")]
+                                    )?;
 
     let path = url.to_path_with_ext();
-    if let Err(err) = download_youtube_audio(url.0.as_ref(), &path.to_string_lossy()) {
-        if let Err(rollback_err) = tx.rollback().await {
-            return Err(anyhow!("ERROR 1: {err}\nERROR 2: {rollback_err}"));
-        }
+    download_youtube_audio(url.0.as_ref(), &path.to_string_lossy())?;
 
-        return Err(err);
-    }
+    tx.commit()
+        .await
+        .into_app_err("failed to commit transaction", AppErrorKind::Database, &[])?;
 
-    tx.commit().await?;
     Ok(metadata)
 }
 
-pub fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Result<()> {
+pub fn download_youtube_audio(url: &str, download_location: &str) -> Result<(), AppError> {
     let out = Command::new("yt-dlp")
         .args([
             "-f",
@@ -105,12 +103,19 @@ pub fn download_youtube_audio(url: &str, download_location: &str) -> anyhow::Res
             download_location,
             url,
         ])
-        .output()?;
+        .output()
+        .into_app_err(
+            "failed to download youtube video",
+            AppErrorKind::Download,
+            &[&format!("URL: {url}")],
+        )?;
 
     if out.status.code().unwrap_or(1) != 0 {
-        return Err(anyhow!(String::from_utf8(out.stderr).unwrap_or(
-            "failed to parse stderr of 'yt-dlp' command".to_owned()
-        )));
+        return Err(AppError::new(
+            AppErrorKind::Download,
+            "failed to download youtube video",
+            &["failed to parse stderr of 'yt-dlp' command"],
+        ));
     }
 
     Ok(())

@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 
+use crate::error::{AppError, AppErrorKind, IntoAppError};
+
 pub mod playlist;
 pub mod video;
 
@@ -53,6 +55,31 @@ pub fn youtube_content_type<'a>(value: impl Into<&'a str>) -> YoutubeContentType
     }
 
     yt_type(value)
+}
+
+async fn get_api_data(url: &str) -> Result<String, AppError> {
+    reqwest::get(url)
+        .await
+        .into_app_err(
+            "failed to fetch youtube playlist metadata",
+            AppErrorKind::Api,
+            &[&format!("URL: {url}")],
+        )?
+        .text()
+        .await
+        .into_app_err(
+            "failed to fetch youtube playlist metadata",
+            AppErrorKind::Api,
+            &[&format!("URL: {url}")],
+        )
+}
+
+fn parse_api_data<'a, T: Deserialize<'a>>(body: &'a str, url: &'a str) -> Result<T, AppError> {
+    serde_json::from_str(body).into_app_err(
+        "failed to parse youtube playlist metadata",
+        AppErrorKind::Api,
+        &[&format!("URL: {url}"), &format!("RESPONSE_TEXT: {body}")],
+    )
 }
 
 #[cfg(test)]
