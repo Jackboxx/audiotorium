@@ -38,18 +38,7 @@ pub async fn process_single_youtube_video(
     let metadata = match download_and_store_youtube_audio_with_metadata(url, tx).await {
         Ok(metadata) => metadata,
         Err(err) => {
-            log::error!(
-                "failed to download video, URL: {url}, ERROR: {err}",
-                url = url.0
-            );
-            addr.do_send(NotifyDownloadUpdate::SingleFinished(Err((
-                info,
-                AppError::new(
-                    AppErrorKind::Download,
-                    "failed to download youtube video",
-                    &[&format!("URL: {url}", url = url.0)],
-                ),
-            ))));
+            addr.do_send(NotifyDownloadUpdate::SingleFinished(Err((info, err))));
             return;
         }
     };

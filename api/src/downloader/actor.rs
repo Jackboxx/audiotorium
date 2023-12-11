@@ -166,17 +166,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                                 Err(err) => Err((info, err)),
                             }
                         }
-                        Err(err) => {
-                            log::error!("failed to download video, URL: {url}, ERROR: {err}");
-                            Err((
-                                info,
-                                AppError::new(
-                                    AppErrorKind::Download,
-                                    "failed to download youtube video",
-                                    &[&format!("URL: {url}")],
-                                ),
-                            ))
-                        }
+                        Err(err) => Err((info, err)),
                     };
 
                     addr.do_send(NotifyDownloadUpdate::SingleFinished(result));

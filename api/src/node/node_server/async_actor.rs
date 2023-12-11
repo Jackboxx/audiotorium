@@ -68,7 +68,9 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
             async move {
                 let identifier = match msg.0.identifier.into_required_info().await {
                     Ok(ident) => ident,
-                    Err(err) => {return Err(err);}
+                    Err(err) => {
+                        return Err(err);
+                    }
                 };
 
                 let query_res: Result<MetadataQueryResult, AppError> = match identifier {
@@ -85,29 +87,25 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                             path: uid.to_path_with_ext(),
                                         }))
                                     }
-                                    Ok(None) => {
-                                        log::error!("no local data found for uid '{uid:?}'");
-                                        Err(AppError::new(AppErrorKind::LocalData, "failed to find audio data locally", &[]))
-                                    }
-                                    Err(err) => {
-                                        log::error!("failed to get local audio data for uid '{uid:?}, ERROR: {err:?}'");
-                                        Err(err)
-                                    },
+                                    Ok(None) => Err(AppError::new(
+                                        AppErrorKind::LocalData,
+                                        "failed to find audio data locally",
+                                        &[],
+                                    )),
+                                    Err(err) => Err(err),
                                 }
                             }
                             Some(AudioKind::YoutubePlaylist) => {
                                 match get_playlist_items_from_db(&uid.0, None, None).await {
                                     Ok(items) => Ok(MetadataQueryResult::ManyLocal(items)),
-                                    Err(err) => {
-                                        log::error!("failed to get local playlist audio data for uid '{uid:?}, ERROR: {err:?}'");
-                                        Err(err)
-                                    },
+                                    Err(err) => Err(err),
                                 }
                             }
-                            None => {
-                                log::error!("invalid audio uid '{uid:?}'");
-                                Err(AppError::new(AppErrorKind::LocalData, "invalid audio uid", &[&format!("UID: {uid}", uid = uid.0)]))
-                            },
+                            None => Err(AppError::new(
+                                AppErrorKind::LocalData,
+                                "invalid audio uid",
+                                &[&format!("UID: {uid}", uid = uid.0)],
+                            )),
                         }
                     }
                     DownloadRequiredInformation::YoutubeVideo { url } => {
@@ -150,7 +148,8 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                     store_playlist_item_relation_if_not_exists(
                                         &playlist_uid,
                                         &audio_uid,
-                                    ).await?;
+                                    )
+                                    .await?;
                                 }
                                 None => metadata_list.push(LocalAudioMetadata::NotFound {
                                     url: AudioUrl::Youtube(Arc::clone(youtube_url.0)),
@@ -309,15 +308,7 @@ impl AudioIdentifier {
             YoutubeContentType::Playlist => {
                 let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
                     Ok(urls) => urls,
-                    Err(err) => {
-                        log::error!("failed to get playlist information for youtube playlist, URL: {url}, ERROR: {err}");
-
-                        return Err(AppError::new(
-                            AppErrorKind::Download,
-                            "failed to get youtube playlist information",
-                            &[&format!("URL: {url}")],
-                        ));
-                    }
+                    Err(err) => return Err(err),
                 };
 
                 Ok(DownloadRequiredInformation::YoutubePlaylist(
@@ -347,7 +338,6 @@ fn handle_add_single_queue_item(
                 metadata,
                 locator: path,
             }) {
-                log::error!("failed to auto play first song");
                 return Some(Err(err.into_app_err(
                     "failed to auto play first song,",
                     AppErrorKind::Queue,

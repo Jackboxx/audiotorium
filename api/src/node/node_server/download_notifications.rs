@@ -1,6 +1,7 @@
 use crate::{
     audio_playback::audio_item::AudioPlayerQueueItem,
     downloader::{actor::NotifyDownloadUpdate, info::DownloadInfo},
+    error::{AppErrorKind, IntoAppError},
     streams::node_streams::{AudioNodeInfoStreamMessage, RunningDownloadInfo},
 };
 
@@ -42,9 +43,18 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
                     locator: path,
                 };
 
-                if let Err(err) = self.player.push_to_queue(item) {
-                    log::error!("failed to auto play first song, ERROR: {err}");
-                    return;
+                let has_errored = if let Err(err) = self.player.push_to_queue(item) {
+                    self.failed_downloads.insert(
+                        info,
+                        err.into_app_err(
+                            "failed to auto play first song,",
+                            AppErrorKind::Queue,
+                            &[&format!("NODE_NAME: {name}", name = self.source_name)],
+                        ),
+                    );
+                    true
+                } else {
+                    false
                 };
 
                 let download_fin_msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
@@ -53,9 +63,13 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
                 });
                 self.multicast(download_fin_msg);
 
-                let updated_queue_msg =
-                    AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(self.player.queue()));
-                self.multicast(updated_queue_msg);
+                if !has_errored {
+                    let updated_queue_msg = AudioNodeInfoStreamMessage::Queue(
+                        extract_queue_metadata(self.player.queue()),
+                    );
+
+                    self.multicast(updated_queue_msg);
+                }
             }
             NotifyDownloadUpdate::SingleFinished(Err((info, err_resp))) => {
                 self.active_downloads.remove(&info);

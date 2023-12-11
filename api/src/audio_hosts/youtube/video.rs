@@ -26,16 +26,11 @@ pub struct YoutubeVideoContentDetails {
 
 impl From<YoutubeVideo> for AudioMetadata {
     fn from(value: YoutubeVideo) -> Self {
-        let duration = match value.content_details.duration() {
-            Some(duration) => match duration.try_into() {
-                Ok(duration) => Some(duration),
-                Err(err) => {
-                    log::error!("failed to convert duration {err}");
-                    None
-                }
-            },
-            None => None,
-        };
+        let duration = value
+            .content_details
+            .duration()
+            .map(|dur| dur.try_into().ok())
+            .flatten();
 
         AudioMetadata {
             name: Some(value.snippet.title).into(),
@@ -48,15 +43,9 @@ impl From<YoutubeVideo> for AudioMetadata {
 
 impl YoutubeVideoContentDetails {
     fn duration(&self) -> Option<u128> {
-        match parse_duration::parse(&self.duration_iso_8601.replace("M", "m"))
+        parse_duration::parse(&self.duration_iso_8601.replace("M", "m"))
             .map(|t| t.as_millis())
-        {
-            Ok(t) => Some(t),
-            Err(err) => {
-                log::error!("failed to parse duration {err}");
-                None
-            }
-        }
+            .ok()
     }
 }
 

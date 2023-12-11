@@ -122,7 +122,6 @@ fn handle_remove_queue_item(
     let RemoveQueueItemParams { index } = params.clone();
 
     if let Err(err) = node.player.remove_from_queue(index) {
-        log::error!("failed to play correct audio after removing element from queue, MESSAGE: {params:?}, ERROR: {err}");
         return Err(err.into_app_err(
             "failed to play correct audio after removing item",
             AppErrorKind::Queue,

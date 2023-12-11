@@ -50,11 +50,8 @@ pub async fn get_playlists(
                 serde_json::to_string(&result).unwrap_or("oops something went wrong".to_owned()),
             )
         }
-        Err(err) => {
-            log::error!("{err:?}");
-            HttpResponse::InternalServerError()
-                .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned()))
-        }
+        Err(err) => HttpResponse::InternalServerError()
+            .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned())),
     }
 }
 
@@ -76,11 +73,8 @@ pub async fn get_audio(
                 serde_json::to_string(&result).unwrap_or("oops something went wrong".to_owned()),
             )
         }
-        Err(err) => {
-            log::error!("{err:?}");
-            HttpResponse::InternalServerError()
-                .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned()))
-        }
+        Err(err) => HttpResponse::InternalServerError()
+            .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned())),
     }
 }
 
@@ -103,10 +97,7 @@ pub async fn get_audio_in_playlist(
                 serde_json::to_string(&result).unwrap_or("oops something went wrong".to_owned()),
             )
         }
-        Err(err) => {
-            log::error!("{err:?}");
-            HttpResponse::InternalServerError()
-                .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned()))
-        }
+        Err(err) => HttpResponse::InternalServerError()
+            .body(serde_json::to_string(&err).unwrap_or("oops something went wrong".to_owned())),
     }
 }

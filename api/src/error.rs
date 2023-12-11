@@ -91,11 +91,14 @@ impl<E: Display> IntoAppError<AppError> for E {
         kind: AppErrorKind,
         extra_details: &'a [&'a str],
     ) -> AppError {
-        AppError {
+        let app_err = AppError {
             kind,
             info: info.into(),
             detailed_info: AppError::format_detailed_info(self, extra_details),
-        }
+        };
+
+        log::error!("{app_err}");
+        app_err
     }
 }
 
@@ -125,11 +128,14 @@ impl Serialize for AppError {
 
 impl AppError {
     pub fn new(kind: AppErrorKind, info: impl Into<Arc<str>>, extra_details: &[&str]) -> Self {
-        Self {
+        let app_err = Self {
             kind,
             info: info.into(),
             detailed_info: AppError::format_detailed_info("", extra_details),
-        }
+        };
+
+        log::error!("{app_err}");
+        app_err
     }
 
     fn format_detailed_info<D: Display>(err: D, extra_details: &[&str]) -> Arc<str> {
