@@ -130,6 +130,7 @@ pub async fn get_playlist_items_from_db(
         INNER JOIN audio_playlist_item items 
             ON audio.identifier = items.item_identifier
         WHERE items.playlist_identifier = $1
+        ORDER BY position
         LIMIT $2 OFFSET $3",
         playlist_uid,
         limit,
