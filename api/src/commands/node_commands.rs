@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_player::LoopBounds, utils::get_node_by_source_name, AppData,
-    ErrorResponse,
+    audio_playback::audio_player::LoopBounds, error::AppError, utils::get_node_by_source_name,
+    AppData,
 };
 
 /// Commands a client can send to an audio node
@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, TS, Deserialize, Message)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[ts(export, export_to = "../app/src/api-types/")]
-#[rtype(result = "Result<(), ErrorResponse>")]
+#[rtype(result = "Result<(), AppError>")]
 pub enum AudioNodeCommand {
     AddQueueItem(AddQueueItemParams),
     RemoveQueueItem(RemoveQueueItemParams),

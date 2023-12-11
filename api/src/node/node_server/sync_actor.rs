@@ -1,26 +1,18 @@
 use crate::{
-    audio_playback::{
-        audio_item::AudioPlayerQueueItem,
-        audio_player::{PlaybackState, SerializableQueue},
-    },
+    audio_playback::audio_player::{PlaybackState, SerializableQueue},
     commands::node_commands::{AudioNodeCommand, MoveQueueItemParams, RemoveQueueItemParams},
-    downloader::{
-        actor::{DownloadAudioRequest, NotifyDownloadUpdate},
-        download_identifier::YoutubeVideoUrl,
-        DownloadRequiredInformation,
-    },
+    error::{AppError, AppErrorKind, IntoAppError},
     node::node_server::async_actor::AsyncAddQueueItem,
     streams::node_streams::AudioNodeInfoStreamMessage,
     utils::log_msg_received,
-    ErrorResponse, IntoErrResp,
 };
 
-use actix::{AsyncContext, Handler, Recipient};
+use actix::{AsyncContext, Handler};
 
-use super::{async_actor::LocalAudioMetadata, extract_queue_metadata, AudioNode, AudioUrl};
+use super::{extract_queue_metadata, AudioNode};
 
 impl Handler<AudioNodeCommand> for AudioNode {
-    type Result = Result<(), ErrorResponse>;
+    type Result = Result<(), AppError>;
 
     fn handle(&mut self, msg: AudioNodeCommand, ctx: &mut Self::Context) -> Self::Result {
         log_msg_received(&self, &msg);
@@ -81,13 +73,21 @@ impl Handler<AudioNodeCommand> for AudioNode {
             AudioNodeCommand::PlayNext => {
                 log::info!("'PlayNext' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_next().into_err_resp("")?;
+                self.player.play_next().into_app_err(
+                    "failed to play next audio",
+                    AppErrorKind::Queue,
+                    &[&format!("NODE_NAME: {name}", name = self.source_name)],
+                )?;
                 Ok(())
             }
             AudioNodeCommand::PlayPrevious => {
                 log::info!("'PlayPrevious' handler received a message, MESSAGE: {msg:?}");
 
-                self.player.play_prev().into_err_resp("")?;
+                self.player.play_prev().into_app_err(
+                    "failed to play previous audio",
+                    AppErrorKind::Queue,
+                    &[&format!("NODE_NAME: {name}", name = self.source_name)],
+                )?;
                 Ok(())
             }
             AudioNodeCommand::PlaySelected(params) => {
@@ -95,7 +95,14 @@ impl Handler<AudioNodeCommand> for AudioNode {
 
                 self.player
                     .play_selected(params.index, false)
-                    .into_err_resp("")?;
+                    .into_app_err(
+                        "failed to play selected audio",
+                        AppErrorKind::Queue,
+                        &[
+                            &format!("NODE_NAME: {name}", name = self.source_name),
+                            &format!("INDEX: {index}", index = params.index),
+                        ],
+                    )?;
                 Ok(())
             }
             AudioNodeCommand::LoopQueue(params) => {
@@ -108,55 +115,19 @@ impl Handler<AudioNodeCommand> for AudioNode {
     }
 }
 
-pub(super) fn handle_add_single_queue_item(
-    data: LocalAudioMetadata,
-    node: &mut AudioNode,
-    node_addr: Recipient<NotifyDownloadUpdate>,
-) -> Option<Result<AudioNodeInfoStreamMessage, ErrorResponse>> {
-    match data {
-        LocalAudioMetadata::Found { metadata, path } => {
-            if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
-                metadata,
-                locator: path,
-            }) {
-                log::error!("failed to auto play first song");
-                return Some(Err(ErrorResponse {
-                    error: format!("failed to auto play first song, ERROR: {err}"),
-                }));
-            }
-        }
-        LocalAudioMetadata::NotFound { url } => {
-            let download_info = match url {
-                AudioUrl::Youtube(url) => DownloadRequiredInformation::YoutubeVideo {
-                    url: YoutubeVideoUrl(url),
-                },
-            };
-
-            node.downloader_addr.do_send(DownloadAudioRequest {
-                addr: node_addr,
-                required_info: download_info,
-            });
-
-            return None;
-        }
-    }
-
-    Some(Ok(AudioNodeInfoStreamMessage::Queue(
-        extract_queue_metadata(node.player.queue()),
-    )))
-}
-
 fn handle_remove_queue_item(
     node: &mut AudioNode,
     params: RemoveQueueItemParams,
-) -> Result<SerializableQueue, ErrorResponse> {
+) -> Result<SerializableQueue, AppError> {
     let RemoveQueueItemParams { index } = params.clone();
 
     if let Err(err) = node.player.remove_from_queue(index) {
         log::error!("failed to play correct audio after removing element from queue, MESSAGE: {params:?}, ERROR: {err}");
-        return Err(ErrorResponse {
-            error: format!("failed to play correct audio after removing element, ERROR: {err}"),
-        });
+        return Err(err.into_app_err(
+            "failed to play correct audio after removing item",
+            AppErrorKind::Queue,
+            &[&format!("NODE_NAME: {name}", name = node.source_name)],
+        ));
     }
 
     Ok(extract_queue_metadata(node.player.queue()))

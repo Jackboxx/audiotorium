@@ -15,7 +15,7 @@ use crate::{
     },
     brain::brain_server::AudioBrain,
     downloader::{actor::AudioDownloader, info::DownloadInfo},
-    ErrorResponse,
+    error::AppError,
 };
 
 use super::{health::AudioNodeHealth, node_session::AudioNodeSession};
@@ -33,7 +33,7 @@ pub struct AudioNode {
     pub(super) player: AudioPlayer<PathBuf>,
     pub(super) downloader_addr: Addr<AudioDownloader>,
     pub(super) active_downloads: HashSet<DownloadInfo>,
-    pub(super) failed_downloads: HashMap<DownloadInfo, ErrorResponse>,
+    pub(super) failed_downloads: HashMap<DownloadInfo, AppError>,
     pub(super) server_addr: Addr<AudioBrain>,
     pub(super) sessions: HashMap<usize, Addr<AudioNodeSession>>,
     pub(super) health: AudioNodeHealth,

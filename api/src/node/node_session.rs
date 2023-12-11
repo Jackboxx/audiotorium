@@ -12,12 +12,12 @@ use ts_rs::TS;
 
 use crate::{
     audio_playback::audio_item::AudioMetadata,
+    error::AppError,
     node::node_server::connections::{NodeConnectMessage, NodeDisconnectMessage},
     streams::node_streams::{
         get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
         AudioStateInfo, RunningDownloadInfo,
     },
-    ErrorResponse,
 };
 
 use super::{health::AudioNodeHealth, node_server::AudioNode};
@@ -116,11 +116,11 @@ impl Handler<AudioNodeInfoStreamMessage> for AudioNodeSession {
     }
 }
 
-impl Handler<ErrorResponse> for AudioNodeSession {
+impl Handler<AppError> for AudioNodeSession {
     type Result = ();
 
     /// used to receive multicast messages from nodes
-    fn handle(&mut self, msg: ErrorResponse, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AppError, ctx: &mut Self::Context) -> Self::Result {
         ctx.text(
             serde_json::to_string(&msg).unwrap_or(String::from("failed to serialize on server")),
         )

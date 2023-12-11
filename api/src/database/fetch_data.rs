@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    audio_playback::audio_item::AudioMetadata, db_pool, downloader::download_identifier::ItemUid,
-    opt_arc::OptionArcStr, ErrorResponse, IntoErrResp,
+    audio_playback::audio_item::AudioMetadata,
+    db_pool,
+    downloader::download_identifier::ItemUid,
+    error::{AppError, AppErrorKind, IntoAppError},
+    opt_arc::OptionArcStr,
 };
 
 use super::PlaylistMetadata;
@@ -49,7 +52,7 @@ impl From<PlaylistQueryResult> for (ItemUid<Arc<str>>, PlaylistMetadata) {
     }
 }
 
-pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadata>, ErrorResponse> {
+pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadata>, AppError> {
     sqlx::query_as!(
         AudioMetadata,
         "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
@@ -57,13 +60,17 @@ pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadat
     )
     .fetch_optional(db_pool())
     .await
-    .into_err_resp("")
+    .into_app_err(
+        "failed to get audio metdata",
+        AppErrorKind::Database,
+        &[&format!("UID: {uid}")],
+    )
 }
 
 pub async fn get_all_audio_metadata_from_db(
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, AppError> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -77,13 +84,17 @@ pub async fn get_all_audio_metadata_from_db(
     .fetch_all(db_pool())
     .await
     .map(|vec| vec.into_iter().map(Into::into).collect())
-    .into_err_resp("")
+    .into_app_err(
+        "failed to get all audio metdata from db",
+        AppErrorKind::Database,
+        &[&format!("LIMIT: {limit}"), &format!("OFFSET: {offset}")],
+    )
 }
 
 pub async fn get_all_playlist_metadata_from_db(
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Arc<[(ItemUid<Arc<str>>, PlaylistMetadata)]>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, PlaylistMetadata)]>, AppError> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -97,14 +108,18 @@ pub async fn get_all_playlist_metadata_from_db(
     .fetch_all(db_pool())
     .await
     .map(|vec| vec.into_iter().map(Into::into).collect())
-    .into_err_resp("")
+    .into_app_err(
+        "failed to get all playlist metdata",
+        AppErrorKind::Database,
+        &[&format!("LIMIT: {limit}"), &format!("OFFSET: {offset}")],
+    )
 }
 
 pub async fn get_playlist_items_from_db(
     playlist_uid: &str,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, ErrorResponse> {
+) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, AppError> {
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -123,5 +138,13 @@ pub async fn get_playlist_items_from_db(
     .fetch_all(db_pool())
     .await
     .map(|vec| vec.into_iter().map(Into::into).collect())
-    .into_err_resp("")
+    .into_app_err(
+        "failed to get all audio items in playlist ",
+        AppErrorKind::Database,
+        &[
+            &format!("PLAYLIST_UID: {playlist_uid}"),
+            &format!("LIMIT: {limit}"),
+            &format!("OFFSET: {offset}"),
+        ],
+    )
 }

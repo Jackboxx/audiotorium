@@ -18,10 +18,11 @@ use crate::{
         audio_player::{PlaybackInfo, ProcessorInfo},
     },
     downloader::info::DownloadInfo,
+    error::AppError,
     node::{health::AudioNodeHealth, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
-    AppData, ErrorResponse,
+    AppData,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -53,8 +54,8 @@ pub struct RunningDownloadInfo {
     #[ts(type = "Array<DownloadInfo>")]
     pub active: Arc<[DownloadInfo]>,
 
-    #[ts(type = "Array<[DownloadInfo, ErrorResponse]>")]
-    pub failed: Arc<[(DownloadInfo, ErrorResponse)]>,
+    #[ts(type = "Array<[DownloadInfo, AppError]>")]
+    pub failed: Arc<[(DownloadInfo, AppError)]>,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]

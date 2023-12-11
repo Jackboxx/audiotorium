@@ -8,8 +8,8 @@ use crate::{
         youtube::{download_and_store_youtube_audio_with_metadata, process_single_youtube_video},
         DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
+    error::{AppError, AppErrorKind, IntoAppError},
     utils::log_msg_received,
-    ErrorResponse, IntoErrResp,
 };
 use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
 
@@ -35,13 +35,13 @@ pub struct DownloadAudioRequest {
 }
 
 type SingleDownloadFinished =
-    Result<(DownloadInfo, AudioMetadata, PathBuf), (DownloadInfo, ErrorResponse)>;
+    Result<(DownloadInfo, AudioMetadata, PathBuf), (DownloadInfo, AppError)>;
 
 #[derive(Message)]
 #[rtype(result = "()")]
 pub enum NotifyDownloadUpdate {
     Queued(DownloadInfo),
-    FailedToQueue((DownloadInfo, ErrorResponse)),
+    FailedToQueue((DownloadInfo, AppError)),
     SingleFinished(SingleDownloadFinished),
     BatchUpdated { batch: DownloadInfo },
 }
@@ -89,7 +89,12 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
                 queue.push_back(msg);
             }
             Err(err) => {
-                let err_resp = err.into_err_resp("failed to add audio to download queue\nERROR:");
+                let err_resp = err.into_app_err(
+                    "failed to queue audio for download",
+                    AppErrorKind::Download,
+                    &[],
+                );
+
                 let info: OptionalDownloadInfo = msg.required_info.into();
                 if let Some(info) = info.into() {
                     msg.addr
@@ -153,9 +158,11 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                             log::error!("failed to download video, URL: {url}, ERROR: {err}");
                             Err((
                                 info,
-                                ErrorResponse {
-                                    error: format!("failed to download video with url: {url}"),
-                                },
+                                AppError::new(
+                                    AppErrorKind::Download,
+                                    "failed to download youtube video",
+                                    &[&format!("URL: {url}")],
+                                ),
                             ))
                         }
                     };

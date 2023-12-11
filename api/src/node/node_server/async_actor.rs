@@ -22,10 +22,11 @@ use crate::{
         },
         DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
-    node::node_server::{extract_queue_metadata, sync_actor::handle_add_single_queue_item},
+    error::{AppError, AppErrorKind, IntoAppError},
+    node::node_server::extract_queue_metadata,
     streams::node_streams::AudioNodeInfoStreamMessage,
     utils::log_msg_received,
-    yt_api_key, ErrorResponse,
+    yt_api_key,
 };
 
 use super::{clean_url, AudioNode, AudioUrl};
@@ -68,7 +69,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
             async move {
                 let identifier = msg.0.identifier.into_required_info().await.unwrap();
 
-                let query_res: Result<MetadataQueryResult, ErrorResponse> = match identifier {
+                let query_res: Result<MetadataQueryResult, AppError> = match identifier {
                     DownloadRequiredInformation::StoredLocally { uid } => {
                         let uid = ItemUid(uid);
                         let kind = AudioKind::from_uid(&uid);
@@ -84,9 +85,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                     }
                                     Ok(None) => {
                                         log::error!("no local data found for uid '{uid:?}'");
-                                        Err(ErrorResponse {
-                                            error: "no local audio data found".to_owned(),
-                                        })
+                                        Err(AppError::new(AppErrorKind::LocalData, "failed to find audio data locally", &[]))
                                     }
                                     Err(err) => {
                                         log::error!("failed to get local audio data for uid '{uid:?}, ERROR: {err:?}'");
@@ -105,9 +104,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                             }
                             None => {
                                 log::error!("invalid audio uid '{uid:?}'");
-                                Err(ErrorResponse {
-                                    error: "invalid audio uid".to_owned(),
-                                })
+                                Err(AppError::new(AppErrorKind::LocalData, "invalid audio uid", &[&format!("UID: {uid}", uid = uid.0)]))
                             },
                         }
                     }
@@ -330,4 +327,44 @@ impl AudioIdentifier {
             YoutubeContentType::Invalid => Err(anyhow!("invalid youtube video url, URL: {url}")),
         }
     }
+}
+
+fn handle_add_single_queue_item(
+    data: LocalAudioMetadata,
+    node: &mut AudioNode,
+    node_addr: Recipient<NotifyDownloadUpdate>,
+) -> Option<Result<AudioNodeInfoStreamMessage, AppError>> {
+    match data {
+        LocalAudioMetadata::Found { metadata, path } => {
+            if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
+                metadata,
+                locator: path,
+            }) {
+                log::error!("failed to auto play first song");
+                return Some(Err(err.into_app_err(
+                    "failed to auto play first song,",
+                    AppErrorKind::Queue,
+                    &[&format!("NODE_NAME: {name}", name = node.source_name)],
+                )));
+            }
+        }
+        LocalAudioMetadata::NotFound { url } => {
+            let download_info = match url {
+                AudioUrl::Youtube(url) => DownloadRequiredInformation::YoutubeVideo {
+                    url: YoutubeVideoUrl(url),
+                },
+            };
+
+            node.downloader_addr.do_send(DownloadAudioRequest {
+                addr: node_addr,
+                required_info: download_info,
+            });
+
+            return None;
+        }
+    }
+
+    Some(Ok(AudioNodeInfoStreamMessage::Queue(
+        extract_queue_metadata(node.player.queue()),
+    )))
 }

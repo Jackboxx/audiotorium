@@ -5,8 +5,10 @@ use anyhow::anyhow;
 use sqlx::PgPool;
 
 use crate::{
-    audio_hosts::youtube::video::get_video_metadata, audio_playback::audio_item::AudioMetadata,
-    yt_api_key, ErrorResponse,
+    audio_hosts::youtube::video::get_video_metadata,
+    audio_playback::audio_item::AudioMetadata,
+    error::{AppError, AppErrorKind},
+    yt_api_key,
 };
 
 use super::{
@@ -33,9 +35,11 @@ pub async fn process_single_youtube_video(
             );
             addr.do_send(NotifyDownloadUpdate::SingleFinished(Err((
                 info,
-                ErrorResponse {
-                    error: format!("failed to download video with url: {url}", url = url.0),
-                },
+                AppError::new(
+                    AppErrorKind::Download,
+                    "failed to download youtube video",
+                    &[&format!("URL: {url}", url = url.0)],
+                ),
             ))));
             return;
         }
