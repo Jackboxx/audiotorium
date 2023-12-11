@@ -19,7 +19,8 @@ use sqlx::postgres::PgPoolOptions;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    dotenv::dotenv().expect(".env file should exists");
+    dotenv::from_filename(".env-secret").expect(".env-secret file should exists");
 
     let addr;
     if cfg!(not(debug_assertions)) {

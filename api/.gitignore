@@ -5,3 +5,4 @@ audio-dev
 db-data-dev
 *.db
 *.log
+.env-secret
