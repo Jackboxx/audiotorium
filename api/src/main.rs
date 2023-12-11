@@ -40,7 +40,7 @@ async fn main() -> std::io::Result<()> {
         .max_connections(5)
         .connect(env!("DATABASE_URL"))
         .await
-        .unwrap();
+        .expect("should be able to connect to database");
 
     sqlx::migrate!("./migrations")
         .run(&pool)

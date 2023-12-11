@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use crate::{
     audio_hosts::youtube::video::get_video_metadata,
     audio_playback::audio_item::AudioMetadata,
-    error::{AppError, AppErrorKind},
+    error::{AppError, AppErrorKind, IntoAppError},
     yt_api_key,
 };
 
@@ -22,9 +22,19 @@ pub async fn process_single_youtube_video(
     pool: &PgPool,
     addr: &Recipient<NotifyDownloadUpdate>,
 ) {
-    let tx = pool.begin().await.unwrap();
-
     let info = DownloadInfo::yt_video(&url.0);
+
+    let tx = match pool.begin().await.into_app_err(
+        "failed to start transaction",
+        AppErrorKind::Database,
+        &[],
+    ) {
+        Ok(tx) => tx,
+        Err(err) => {
+            addr.do_send(NotifyDownloadUpdate::SingleFinished(Err((info, err))));
+            return;
+        }
+    };
 
     let metadata = match download_and_store_youtube_audio_with_metadata(url, tx).await {
         Ok(metadata) => metadata,

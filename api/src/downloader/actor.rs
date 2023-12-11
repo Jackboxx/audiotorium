@@ -134,9 +134,20 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     };
 
                 for url in videos_to_process.to_owned() {
-                    let tx = pool.begin().await.unwrap();
-
                     let info = DownloadInfo::yt_video_from_arc(&url);
+
+                    let tx = match pool.begin().await.into_app_err(
+                        "failed to start transaction",
+                        AppErrorKind::Database,
+                        &[],
+                    ) {
+                        Ok(tx) => tx,
+                        Err(err) => {
+                            addr.do_send(NotifyDownloadUpdate::FailedToQueue((info, err)));
+                            return;
+                        }
+                    };
+
                     let video_url = YoutubeVideoUrl(&url);
 
                     let result = match download_and_store_youtube_audio_with_metadata(
@@ -145,14 +156,15 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     .await
                     {
                         Ok(metadata) => {
-                            store_playlist_item_relation_if_not_exists(
+                            match store_playlist_item_relation_if_not_exists(
                                 &playlist_url.uid(),
                                 &video_url.uid(),
                             )
                             .await
-                            .unwrap();
-
-                            Ok((info, metadata, video_url.to_path_with_ext()))
+                            {
+                                Ok(()) => Ok((info, metadata, video_url.to_path_with_ext())),
+                                Err(err) => Err((info, err)),
+                            }
                         }
                         Err(err) => {
                             log::error!("failed to download video, URL: {url}, ERROR: {err}");

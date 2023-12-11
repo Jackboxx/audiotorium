@@ -3,7 +3,6 @@ use std::{path::PathBuf, sync::Arc};
 use actix::{
     ActorFutureExt, AsyncContext, Handler, Message, Recipient, ResponseActFuture, WrapFuture,
 };
-use anyhow::anyhow;
 
 use crate::{
     audio_hosts::youtube::{
@@ -67,7 +66,10 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
         Box::pin(
             async move {
-                let identifier = msg.0.identifier.into_required_info().await.unwrap();
+                let identifier = match msg.0.identifier.into_required_info().await {
+                    Ok(ident) => ident,
+                    Err(err) => {return Err(err);}
+                };
 
                 let query_res: Result<MetadataQueryResult, AppError> = match identifier {
                     DownloadRequiredInformation::StoredLocally { uid } => {
@@ -129,7 +131,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                         playlist_url,
                     }) => {
                         let playlist_uid = playlist_url.uid();
-                        store_playlist_if_not_exists(&playlist_uid).await.unwrap();
+                        store_playlist_if_not_exists(&playlist_uid).await?;
 
                         let mut metadata_list = Vec::with_capacity(video_urls.len());
 
@@ -137,19 +139,18 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                             let youtube_url = YoutubeVideoUrl(url);
                             let audio_uid = youtube_url.uid();
 
-                            let metadata = get_audio_metadata_from_db(&audio_uid).await.unwrap();
+                            let metadata = get_audio_metadata_from_db(&audio_uid).await?;
                             match metadata {
                                 Some(metadata) => {
                                     metadata_list.push(LocalAudioMetadata::Found {
                                         metadata,
                                         path: youtube_url.to_path_with_ext(),
                                     });
+
                                     store_playlist_item_relation_if_not_exists(
                                         &playlist_uid,
                                         &audio_uid,
-                                    )
-                                    .await
-                                    .unwrap();
+                                    ).await?;
                                 }
                                 None => metadata_list.push(LocalAudioMetadata::NotFound {
                                     url: AudioUrl::Youtube(Arc::clone(youtube_url.0)),
@@ -237,8 +238,7 @@ fn play_existing_playlist_items(
             locator: path,
         };
 
-        // TODO handle error
-        node.player.push_to_queue(audio_item).unwrap();
+        let _ = node.player.push_to_queue(audio_item);
     }
 
     node.multicast(AudioNodeInfoStreamMessage::Queue(extract_queue_metadata(
@@ -291,7 +291,7 @@ fn request_download_of_missing_items(
 }
 
 impl AudioIdentifier {
-    async fn into_required_info(self) -> anyhow::Result<DownloadRequiredInformation> {
+    async fn into_required_info(self) -> Result<DownloadRequiredInformation, AppError> {
         let url = match self {
             Self::Local { uid } => {
                 return Ok(DownloadRequiredInformation::StoredLocally { uid: uid.into() })
@@ -311,8 +311,11 @@ impl AudioIdentifier {
                     Ok(urls) => urls,
                     Err(err) => {
                         log::error!("failed to get playlist information for youtube playlist, URL: {url}, ERROR: {err}");
-                        return Err(anyhow!(
-                            "failed to get playlist information for youtube playlist, URL: {url}"
+
+                        return Err(AppError::new(
+                            AppErrorKind::Download,
+                            "failed to get youtube playlist information",
+                            &[&format!("URL: {url}")],
                         ));
                     }
                 };
@@ -324,7 +327,11 @@ impl AudioIdentifier {
                     },
                 ))
             }
-            YoutubeContentType::Invalid => Err(anyhow!("invalid youtube video url, URL: {url}")),
+            YoutubeContentType::Invalid => Err(AppError::new(
+                AppErrorKind::Download,
+                "invalid youtube video url",
+                &[&format!("URL: {url}")],
+            )),
         }
     }
 }
