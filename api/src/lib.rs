@@ -17,6 +17,7 @@ pub mod message_send_handler;
 pub mod node;
 pub mod opt_arc;
 pub mod rest_data_access;
+pub mod state_storage;
 pub mod utils;
 
 pub static POOL: OnceLock<PgPool> = OnceLock::new(); // set on server start

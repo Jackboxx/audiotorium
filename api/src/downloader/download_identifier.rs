@@ -3,6 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use serde::{Deserialize, Serialize};
+
 use super::AUDIO_DIR;
 
 pub trait Identifier {
@@ -89,5 +91,41 @@ impl Clone for YoutubeVideoUrl<Arc<str>> {
 impl Clone for YoutubePlaylistUrl<Arc<str>> {
     fn clone(&self) -> Self {
         YoutubePlaylistUrl(Arc::clone(&self.0))
+    }
+}
+
+impl Serialize for YoutubeVideoUrl<Arc<str>> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl Serialize for YoutubePlaylistUrl<Arc<str>> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for YoutubeVideoUrl<Arc<str>> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self(Arc::<str>::deserialize(deserializer)?))
+    }
+}
+
+impl<'de> Deserialize<'de> for YoutubePlaylistUrl<Arc<str>> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self(Arc::<str>::deserialize(deserializer)?))
     }
 }
