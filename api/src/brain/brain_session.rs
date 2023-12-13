@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
-    Running, StreamHandler, WrapFuture,
+    ResponseActFuture, Running, StreamHandler, WrapFuture,
 };
 
 use actix_web_actors::ws;
@@ -12,8 +12,11 @@ use ts_rs::TS;
 use crate::{
     brain::brain_server::{BrainConnectMessage, BrainDisconnect},
     node::node_server::AudioNodeInfo,
-    streams::brain_streams::{
-        get_type_of_stream_data, AudioBrainInfoStreamMessage, AudioBrainInfoStreamType,
+    streams::{
+        brain_streams::{
+            get_type_of_stream_data, AudioBrainInfoStreamMessage, AudioBrainInfoStreamType,
+        },
+        HeartBeat,
     },
 };
 
@@ -72,6 +75,8 @@ impl Actor for AudioBrainSession {
                             serde_json::to_string(&res.connection_response)
                                 .unwrap_or("failed to serialize on server".to_owned()),
                         );
+
+                        ctx.notify(HeartBeat);
                     }
 
                     Err(err) => {
@@ -92,6 +97,21 @@ impl Actor for AudioBrainSession {
 
         self.server_addr.do_send(BrainDisconnect { id: self.id });
         Running::Stop
+    }
+}
+
+impl Handler<HeartBeat> for AudioBrainSession {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, _msg: HeartBeat, ctx: &mut Self::Context) -> Self::Result {
+        ctx.ping(b"heart-beat");
+        Box::pin(
+            async {
+                actix_rt::time::sleep(std::time::Duration::from_millis(333)).await;
+            }
+            .into_actor(self)
+            .map(|_res, _act, ctx| ctx.notify(HeartBeat)),
+        )
     }
 }
 

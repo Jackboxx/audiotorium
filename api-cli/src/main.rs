@@ -2,7 +2,13 @@ use itertools::Itertools;
 use reqwest::Client;
 use std::{
     fmt::Display,
-    process::{Command, Stdio},
+    process::{exit, Command, Stdio},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
 };
 use websocket::{ClientBuilder, OwnedMessage};
 
@@ -264,6 +270,20 @@ fn listen_on_socket(url: &str, cmd_str: Option<String>) {
         .unwrap();
 
     let (mut receiver, _) = client.split().unwrap();
+    let heart_beat_received = Arc::new(AtomicBool::new(true));
+
+    let heart_beat_received_clone = heart_beat_received.clone();
+    let max_ms_without_heart_beat = 600;
+
+    thread::spawn(move || loop {
+        let received = heart_beat_received_clone.swap(false, Ordering::AcqRel);
+        if !received {
+            eprintln!("didn't reveice heart beat ping in the last {max_ms_without_heart_beat}ms closing session");
+            exit(1);
+        };
+
+        thread::sleep(Duration::from_millis(max_ms_without_heart_beat));
+    });
 
     for message in receiver.incoming_messages() {
         match message {
@@ -291,6 +311,12 @@ fn listen_on_socket(url: &str, cmd_str: Option<String>) {
                     println!("{text}");
                 }
             },
+            Ok(OwnedMessage::Ping(msg)) => {
+                if msg == b"heart-beat" {
+                    heart_beat_received.swap(true, Ordering::AcqRel);
+                }
+            }
+            Ok(OwnedMessage::Close(_)) => return,
             _ => {}
         }
     }

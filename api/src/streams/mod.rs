@@ -1,10 +1,15 @@
 use core::fmt;
 use std::sync::Arc;
 
+use actix::Message;
 use serde::de::{self, IntoDeserializer};
 
 pub mod brain_streams;
 pub mod node_streams;
+
+#[derive(Debug, Message)]
+#[rtype(result = "()")]
+pub struct HeartBeat;
 
 pub fn deserialize_stringified_list<'de, D, I>(
     deserializer: D,

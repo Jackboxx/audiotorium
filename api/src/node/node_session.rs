@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix::{
     Actor, ActorContext, ActorFutureExt, Addr, AsyncContext, ContextFutureSpawner, Handler,
-    Running, StreamHandler, WrapFuture,
+    ResponseActFuture, Running, StreamHandler, WrapFuture,
 };
 
 use actix_web_actors::ws;
@@ -14,9 +14,12 @@ use crate::{
     audio_playback::audio_item::AudioMetadata,
     error::AppError,
     node::node_server::connections::{NodeConnectMessage, NodeDisconnectMessage},
-    streams::node_streams::{
-        get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
-        AudioStateInfo, RunningDownloadInfo,
+    streams::{
+        node_streams::{
+            get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
+            AudioStateInfo, RunningDownloadInfo,
+        },
+        HeartBeat,
     },
 };
 
@@ -77,6 +80,8 @@ impl Actor for AudioNodeSession {
                             serde_json::to_string(&res.connection_response)
                                 .unwrap_or("failed to serialize on server".to_owned()),
                         );
+
+                        ctx.notify(HeartBeat);
                     }
 
                     Err(err) => {
@@ -97,6 +102,21 @@ impl Actor for AudioNodeSession {
             .do_send(NodeDisconnectMessage { id: self.id });
 
         Running::Stop
+    }
+}
+
+impl Handler<HeartBeat> for AudioNodeSession {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, _msg: HeartBeat, ctx: &mut Self::Context) -> Self::Result {
+        ctx.ping(b"heart-beat");
+        Box::pin(
+            async {
+                actix_rt::time::sleep(std::time::Duration::from_millis(333)).await;
+            }
+            .into_actor(self)
+            .map(|_res, _act, ctx| ctx.notify(HeartBeat)),
+        )
     }
 }
 
