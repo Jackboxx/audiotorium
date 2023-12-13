@@ -3,9 +3,9 @@ use std::sync::Arc;
 use actix::{Addr, Handler, Message, MessageResponse};
 
 use crate::{
-    audio_playback::audio_player::PlaybackInfo,
+    audio_playback::audio_player::AudioInfo,
     node::node_session::{AudioNodeSession, NodeSessionWsResponse},
-    streams::node_streams::{AudioNodeInfoStreamType, AudioStateInfo, RunningDownloadInfo},
+    streams::node_streams::{AudioNodeInfoStreamType, RunningDownloadInfo},
     utils::log_msg_received,
 };
 
@@ -58,11 +58,11 @@ impl Handler<NodeConnectMessage> for AudioNode {
             audio_state_info: msg
                 .wanted_info
                 .contains(&AudioNodeInfoStreamType::AudioStateInfo)
-                .then_some(AudioStateInfo {
-                    playback_info: PlaybackInfo {
-                        current_head_index: self.player.queue_head(),
-                    },
-                    processor_info: self.current_processor_info.clone(),
+                .then_some(AudioInfo {
+                    current_queue_index: self.player.queue_head(),
+                    audio_volume: self.current_processor_info.audio_volume,
+                    audio_progress: self.current_processor_info.audio_progress,
+                    playback_state: self.current_processor_info.playback_state.clone(),
                 }),
         };
 

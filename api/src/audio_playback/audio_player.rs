@@ -16,7 +16,7 @@ use crate::{
     message_send_handler::{ChangeDetector, MessageSendHandler, RateLimiter},
     node::{
         health::{AudioNodeHealth, AudioNodeHealthMild, AudioNodeHealthPoor},
-        node_server::AudioNode,
+        node_server::{AudioNode, SourceName},
         AudioProcessorToNodeMessage,
     },
     utils::setup_device,
@@ -29,7 +29,7 @@ type InternalQueue<ADL> = Vec<AudioPlayerQueueItem<ADL>>;
 pub type SerializableQueue = Arc<[AudioMetadata]>;
 
 pub struct AudioPlayer<ADL: AudioDataLocator> {
-    source_name: String,
+    source_name: SourceName,
     device: Device,
     config: StreamConfig,
     current_stream: Option<Stream>,
@@ -51,13 +51,19 @@ struct AudioProcessor {
 #[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
-pub struct PlaybackInfo {
-    pub current_head_index: usize,
+pub struct AudioInfo {
+    pub playback_state: PlaybackState,
+    pub current_queue_index: usize,
+    pub audio_progress: f64,
+    pub audio_volume: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../app/src/api-types/")]
+#[derive(Debug, Default, Clone)]
+pub struct PlaybackInfo {
+    pub current_queue_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProcessorInfo {
     pub playback_state: PlaybackState,
     pub audio_progress: f64,

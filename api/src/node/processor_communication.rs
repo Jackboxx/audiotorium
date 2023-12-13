@@ -1,9 +1,9 @@
 use actix::{AsyncContext, Handler, Message};
 
 use crate::{
-    audio_playback::audio_player::{PlaybackInfo, ProcessorInfo},
+    audio_playback::audio_player::{AudioInfo, ProcessorInfo},
     brain::brain_server::AudioNodeToBrainMessage,
-    streams::node_streams::{AudioNodeInfoStreamMessage, AudioStateInfo},
+    streams::node_streams::AudioNodeInfoStreamMessage,
     utils::log_msg_received,
 };
 
@@ -58,11 +58,11 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
             AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
                 self.current_processor_info = processor_info.clone();
 
-                let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioStateInfo {
-                    playback_info: PlaybackInfo {
-                        current_head_index: self.player.queue_head(),
-                    },
-                    processor_info,
+                let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioInfo {
+                    current_queue_index: self.player.queue_head(),
+                    audio_volume: processor_info.audio_volume,
+                    audio_progress: processor_info.audio_progress,
+                    playback_state: processor_info.playback_state,
                 });
 
                 self.multicast(msg);

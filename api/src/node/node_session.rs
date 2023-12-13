@@ -11,13 +11,13 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_item::AudioMetadata,
+    audio_playback::{audio_item::AudioMetadata, audio_player::AudioInfo},
     error::AppError,
     node::node_server::connections::{NodeConnectMessage, NodeDisconnectMessage},
     streams::{
         node_streams::{
             get_type_of_stream_data, AudioNodeInfoStreamMessage, AudioNodeInfoStreamType,
-            AudioStateInfo, RunningDownloadInfo,
+            RunningDownloadInfo,
         },
         HeartBeat,
     },
@@ -43,7 +43,7 @@ pub enum NodeSessionWsResponse {
         queue: Option<Arc<[AudioMetadata]>>,
         health: Option<AudioNodeHealth>,
         downloads: Option<RunningDownloadInfo>,
-        audio_state_info: Option<AudioStateInfo>,
+        audio_state_info: Option<AudioInfo>,
     },
 }
 

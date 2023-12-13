@@ -13,10 +13,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::{
-        audio_item::AudioMetadata,
-        audio_player::{PlaybackInfo, ProcessorInfo},
-    },
+    audio_playback::{audio_item::AudioMetadata, audio_player::AudioInfo},
     downloader::info::DownloadInfo,
     error::AppError,
     node::{health::AudioNodeHealth, node_session::AudioNodeSession},
@@ -44,7 +41,7 @@ pub enum AudioNodeInfoStreamMessage {
     Queue(#[ts(type = "Array<AudioMetadata>")] Arc<[AudioMetadata]>),
     Health(AudioNodeHealth),
     Download(RunningDownloadInfo),
-    AudioStateInfo(AudioStateInfo),
+    AudioStateInfo(AudioInfo),
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -56,14 +53,6 @@ pub struct RunningDownloadInfo {
 
     #[ts(type = "Array<[DownloadInfo, AppError]>")]
     pub failed: Arc<[(DownloadInfo, AppError)]>,
-}
-
-#[derive(Debug, Clone, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub struct AudioStateInfo {
-    pub playback_info: PlaybackInfo,
-    pub processor_info: ProcessorInfo,
 }
 
 #[derive(Debug, Clone, Deserialize)]
