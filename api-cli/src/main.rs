@@ -15,11 +15,9 @@ use std::{
 use websocket::{ClientBuilder, OwnedMessage};
 
 use audio_manager_api::{
-    audio_playback::audio_player::LoopBounds,
     commands::node_commands::{
-        AddQueueItemParams, AudioIdentifier, AudioNodeCommand, LoopQueueParams,
-        MoveQueueItemParams, PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
-        SetAudioVolumeParams,
+        AddQueueItemParams, AudioIdentifier, AudioNodeCommand, MoveQueueItemParams,
+        PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams, SetAudioVolumeParams,
     },
     downloader::download_identifier::{AudioKind, ItemUid},
     state_storage::AppStateRecoveryInfo,
@@ -115,6 +113,7 @@ pub enum CliNodeCommand {
         #[arg(short, long)]
         new_pos: usize,
     },
+    ShuffleQueue,
     SetAudioVolume {
         #[arg(short, long)]
         volume: f32,
@@ -130,12 +129,6 @@ pub enum CliNodeCommand {
     PlaySelected {
         #[arg(short, long)]
         index: usize,
-    },
-    LoopQueue {
-        #[arg(short, long)]
-        start: Option<usize>,
-        #[arg(short, long)]
-        end: Option<usize>,
     },
 }
 
@@ -221,6 +214,7 @@ impl From<CliNodeCommand> for AudioNodeCommand {
             CliNodeCommand::MoveQueueItem { old_pos, new_pos } => {
                 AudioNodeCommand::MoveQueueItem(MoveQueueItemParams { old_pos, new_pos })
             }
+            CliNodeCommand::ShuffleQueue => AudioNodeCommand::ShuffleQueue,
             CliNodeCommand::SetAudioVolume { volume } => {
                 AudioNodeCommand::SetAudioVolume(SetAudioVolumeParams { volume })
             }
@@ -233,18 +227,6 @@ impl From<CliNodeCommand> for AudioNodeCommand {
             CliNodeCommand::PlayPrevious => AudioNodeCommand::PlayPrevious,
             CliNodeCommand::PlaySelected { index } => {
                 AudioNodeCommand::PlaySelected(PlaySelectedParams { index })
-            }
-            CliNodeCommand::LoopQueue { start, end } => {
-                if start.is_some() && end.is_some() {
-                    AudioNodeCommand::LoopQueue(LoopQueueParams {
-                        bounds: Some(LoopBounds {
-                            start: start.unwrap(),
-                            end: end.unwrap(),
-                        }),
-                    })
-                } else {
-                    AudioNodeCommand::LoopQueue(LoopQueueParams { bounds: None })
-                }
             }
         }
     }

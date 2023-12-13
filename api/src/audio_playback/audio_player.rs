@@ -7,6 +7,7 @@ use cpal::{
     Device, Stream, StreamConfig, StreamError,
 };
 use creek::{read::ReadError, ReadDiskStream, SymphoniaDecoder};
+use rand::{seq::SliceRandom, thread_rng};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -38,7 +39,6 @@ pub struct AudioPlayer<ADL: AudioDataLocator> {
     processor_msg_buffer: Option<Producer<AudioProcessorMessage>>,
     queue_head: usize,
     current_volume: f32,
-    loop_start_end: Option<(usize, usize)>,
 }
 
 struct AudioProcessor {
@@ -98,14 +98,6 @@ pub enum PlaybackState {
     Paused,
 }
 
-#[derive(Debug, Clone, Serialize, TS, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub struct LoopBounds {
-    pub start: usize,
-    pub end: usize,
-}
-
 #[derive(Debug, Clone)]
 pub enum AudioProcessorMessage {
     SetVolume(f32),
@@ -143,7 +135,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             node_addr,
             current_volume: restored_state.audio_volume,
             queue_head: restored_state.current_queue_index,
-            loop_start_end: None,
         };
 
         player.restore_state(restored_state);
@@ -170,11 +161,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
         self.update_queue_head(self.queue_head + 1);
 
-        if let Some((start, end)) = self.loop_start_end {
-            if self.queue_head > end {
-                self.update_queue_head(start);
-            }
-        } else if self.queue_head >= self.queue.len() {
+        if self.queue_head >= self.queue.len() {
             self.update_queue_head(0);
         }
 
@@ -191,23 +178,11 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             return Ok(());
         }
 
-        // casting could technically be a problem if we have very large queues like 2^32
-        // but in all realistic situations this should be fine
-        //
-        // !!! CHECK THIS IF YOU ARE HAVING STRANGE ERRORS IN EXTREME CASES !!!
-        let mut fake_queue_head = self.queue_head as isize - 1;
-
-        if let Some((start, end)) = self.loop_start_end {
-            if fake_queue_head > end as isize {
-                fake_queue_head = start as isize;
-            } else if fake_queue_head < start as isize {
-                fake_queue_head = end as isize;
-            }
-        } else if fake_queue_head < 0 {
-            fake_queue_head = self.queue.len() as isize - 1;
-        }
-
-        self.update_queue_head(fake_queue_head as usize);
+        let prev_head = self
+            .queue_head
+            .checked_sub(1)
+            .unwrap_or(self.queue.len() - 1);
+        self.update_queue_head(prev_head);
 
         if let Some(locator) = self.get_locator() {
             self.play(&locator)?;
@@ -226,12 +201,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             return Ok(());
         }
 
-        let new_head_pos = if let Some((start, end)) = self.loop_start_end {
-            index.clamp(start, end)
-        } else {
-            index.clamp(0, self.queue.len() - 1)
-        };
-
+        let new_head_pos = index.clamp(0, self.queue.len() - 1);
         self.update_queue_head(new_head_pos);
 
         if let Some(locator) = self.get_locator() {
@@ -255,18 +225,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
-    /// sets the loop `start` and `end`.
-    ///
-    /// values are clamped between `0` and `queue.len()`.
-    pub fn set_loop(&mut self, loop_start_end: Option<LoopBounds>) {
-        self.loop_start_end = loop_start_end.map(|LoopBounds { start, end }| {
-            (
-                start.clamp(0, self.queue.len()),
-                end.clamp(0, self.queue.len()),
-            )
-        });
-    }
-
     pub fn set_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
         self.current_volume = volume;
@@ -274,20 +232,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
             let _ = buffer.push(AudioProcessorMessage::SetVolume(volume));
         }
-    }
-
-    pub fn loop_bounds(&self) -> Option<LoopBounds> {
-        if let Some((start, end)) = self.loop_start_end {
-            Some(LoopBounds { start, end })
-        } else {
-            None
-        }
-    }
-
-    pub fn get_locator(&self) -> Option<ADL> {
-        self.queue
-            .get(self.queue_head)
-            .map(|audio| audio.locator.clone())
     }
 
     /// if this is the first song to be added to the queue starts playing immediately
@@ -326,6 +270,12 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
+    pub fn shuffle_queue(&mut self) -> anyhow::Result<()> {
+        self.queue.shuffle(&mut thread_rng());
+        self.update_queue_head(0);
+        self.play_selected(0, true)
+    }
+
     // holy shit this should be unit tested
     pub fn move_queue_item(&mut self, old: usize, new: usize) {
         if old == new {
@@ -355,10 +305,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
-    pub fn update_queue_head(&mut self, value: usize) {
-        self.queue_head = value;
-    }
-
     pub fn queue(&self) -> &[AudioPlayerQueueItem<ADL>] {
         &self.queue
     }
@@ -373,6 +319,16 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         if let Some(buffer) = self.processor_msg_buffer.as_mut() {
             let _ = buffer.push(AudioProcessorMessage::Addr(node_addr));
         }
+    }
+
+    fn get_locator(&self) -> Option<ADL> {
+        self.queue
+            .get(self.queue_head)
+            .map(|audio| audio.locator.clone())
+    }
+
+    fn update_queue_head(&mut self, value: usize) {
+        self.queue_head = value;
     }
 
     fn restore_state(&mut self, info: AudioInfo) {

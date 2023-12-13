@@ -45,6 +45,14 @@ impl Handler<AudioNodeCommand> for AudioNode {
 
                 Ok(())
             }
+            AudioNodeCommand::ShuffleQueue => {
+                log::info!("'ShuffleQueue ' handler received a message, MESSAGE: {msg:?}");
+
+                let msg = AudioNodeInfoStreamMessage::Queue(handle_shuffle_queue(self)?);
+                self.multicast(msg);
+
+                Ok(())
+            }
             AudioNodeCommand::SetAudioVolume(params) => {
                 log::info!("'SetAudioVolume' handler received a message, MESSAGE: {msg:?}");
 
@@ -105,12 +113,6 @@ impl Handler<AudioNodeCommand> for AudioNode {
                     )?;
                 Ok(())
             }
-            AudioNodeCommand::LoopQueue(params) => {
-                log::info!("'LoopQueue' handler received a message, MESSAGE: {msg:?}");
-
-                self.player.set_loop(params.bounds.clone());
-                Ok(())
-            }
         }
     }
 }
@@ -137,4 +139,16 @@ fn handle_move_queue_item(node: &mut AudioNode, params: MoveQueueItemParams) -> 
     node.player.move_queue_item(old_pos, new_pos);
 
     extract_queue_metadata(node.player.queue())
+}
+
+fn handle_shuffle_queue(node: &mut AudioNode) -> Result<SerializableQueue, AppError> {
+    if let Err(err) = node.player.shuffle_queue() {
+        return Err(err.into_app_err(
+            "failed to play audio after shuffeling queue",
+            AppErrorKind::Queue,
+            &[&format!("NODE_NAME: {name}", name = node.source_name)],
+        ));
+    }
+
+    Ok(extract_queue_metadata(node.player.queue()))
 }

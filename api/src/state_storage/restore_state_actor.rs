@@ -101,7 +101,7 @@ impl Handler<RestoreDownloadQueue> for RestoreStateActor {
     fn handle(&mut self, msg: RestoreDownloadQueue, _ctx: &mut Self::Context) -> Self::Result {
         log_msg_received(&self, &msg);
 
-        let serialized_queue = dbg!(self.current_state.download_info.queue.clone());
+        let serialized_queue = self.current_state.download_info.queue.clone();
         self.current_state.download_info.restored = true;
         Box::pin(
             async move {
@@ -110,7 +110,7 @@ impl Handler<RestoreDownloadQueue> for RestoreStateActor {
             .into_actor(self)
             .map(move |res, _, _| {
                 msg.download_addr
-                    .do_send(downloader::actor::RestoreQueue(dbg!(res)));
+                    .do_send(downloader::actor::RestoreQueue(res));
             }),
         )
     }

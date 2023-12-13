@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_player::LoopBounds, brain_addr, error::AppError,
-    node::node_server::SourceName, utils::get_node_by_source_name,
+    brain_addr, error::AppError, node::node_server::SourceName, utils::get_node_by_source_name,
 };
 
 /// Commands a client can send to an audio node
@@ -26,6 +25,7 @@ pub enum AudioNodeCommand {
     AddQueueItem(AddQueueItemParams),
     RemoveQueueItem(RemoveQueueItemParams),
     MoveQueueItem(MoveQueueItemParams),
+    ShuffleQueue,
     SetAudioVolume(SetAudioVolumeParams),
     SetAudioProgress(SetAudioProgressParams),
     PauseQueue,
@@ -33,7 +33,6 @@ pub enum AudioNodeCommand {
     PlayNext,
     PlayPrevious,
     PlaySelected(PlaySelectedParams),
-    LoopQueue(LoopQueueParams),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -85,13 +84,6 @@ pub struct SetAudioVolumeParams {
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct SetAudioProgressParams {
     pub progress: f64,
-}
-
-#[derive(Debug, Clone, Serialize, TS, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../app/src/api-types/")]
-pub struct LoopQueueParams {
-    pub bounds: Option<LoopBounds>,
 }
 
 #[post("/commands/node/{source_name}")]
