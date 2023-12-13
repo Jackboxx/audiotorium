@@ -20,6 +20,7 @@ hex = "0.4.3"
 log = "0.4.19"
 parse_duration = "2.1.1"
 pretty_assertions = "1.4.0"
+rand = "0.8.5"
 reqwest = "0.11.22"
 rtrb = "0.2.3"
 serde = { version = "1.0.164", features = ["derive"] }

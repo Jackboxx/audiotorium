@@ -534,6 +534,7 @@ dependencies = [
  "log",
  "parse_duration",
  "pretty_assertions",
+ "rand",
  "reqwest",
  "rtrb",
  "serde",

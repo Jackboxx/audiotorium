@@ -532,6 +532,7 @@ dependencies = [
  "log 0.4.20",
  "parse_duration",
  "pretty_assertions",
+ "rand 0.8.5",
  "reqwest",
  "rtrb",
  "serde",
