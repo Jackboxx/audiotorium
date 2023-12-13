@@ -133,8 +133,8 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                         video_urls.split_at(MAX_CONSECUTIVE_BATCHES)
                     };
 
-                for url in videos_to_process.to_owned() {
-                    let info = DownloadInfo::yt_video_from_arc(&url);
+                for url in videos_to_process {
+                    let info = DownloadInfo::yt_video_from_arc(url);
 
                     let tx = match pool.begin().await.into_app_err(
                         "failed to start transaction",
@@ -176,7 +176,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     addr.do_send(NotifyDownloadUpdate::BatchUpdated {
                         batch: DownloadInfo::yt_playlist_from_arc(
                             &playlist_url.0,
-                            &videos_for_next_batch,
+                            videos_for_next_batch,
                         ),
                     });
                 } else {
@@ -189,7 +189,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     addr.do_send(NotifyDownloadUpdate::BatchUpdated {
                         batch: DownloadInfo::yt_playlist_from_arc(
                             &playlist_url.0,
-                            &videos_for_next_batch,
+                            videos_for_next_batch,
                         ),
                     });
 

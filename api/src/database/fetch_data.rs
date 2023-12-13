@@ -44,9 +44,9 @@ impl From<PlaylistQueryResult> for (ItemUid<Arc<str>>, PlaylistMetadata) {
         (
             ItemUid(value.identifier),
             PlaylistMetadata {
-                name: value.name.into(),
-                author: value.author.into(),
-                cover_art_url: value.cover_art_url.into(),
+                name: value.name,
+                author: value.author,
+                cover_art_url: value.cover_art_url,
             },
         )
     }

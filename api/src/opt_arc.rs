@@ -11,7 +11,7 @@ pub struct OptionArcStr {
 impl Clone for OptionArcStr {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.as_ref().map(|val| Arc::clone(val)),
+            inner: self.inner.as_ref().map(Arc::clone),
         }
     }
 }
@@ -24,9 +24,7 @@ impl From<OptionArcStr> for Option<Arc<str>> {
 
 impl From<Option<Arc<str>>> for OptionArcStr {
     fn from(value: Option<Arc<str>>) -> Self {
-        Self {
-            inner: value.map(|str| str.into()),
-        }
+        Self { inner: value }
     }
 }
 
@@ -44,7 +42,7 @@ impl Serialize for OptionArcStr {
         S: serde::Serializer,
     {
         match &self.inner {
-            Some(str) => serializer.serialize_str(&str),
+            Some(str) => serializer.serialize_str(str),
             None => serializer.serialize_none(),
         }
     }

@@ -62,7 +62,7 @@ impl DownloadInfo {
     pub fn yt_playlist_from_arc(playlist_url: &Arc<str>, video_urls: &[Arc<str>]) -> Self {
         DownloadInfo::YoutubePlaylist {
             playlist_url: Arc::clone(playlist_url),
-            video_urls: video_urls.iter().map(|str| Arc::clone(str)).collect(),
+            video_urls: video_urls.iter().map(Arc::clone).collect(),
         }
     }
 
@@ -101,7 +101,7 @@ impl<T: Borrow<DownloadRequiredInformation>> From<T> for OptionalDownloadInfo {
             }) => OptionalDownloadInfo {
                 inner: Some(DownloadInfo::YoutubePlaylist {
                     playlist_url: Arc::clone(&playlist_url.0),
-                    video_urls: video_urls.into_iter().map(|str| Arc::clone(str)).collect(),
+                    video_urls: video_urls.iter().map(Arc::clone).collect(),
                 }),
             },
         }

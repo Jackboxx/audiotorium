@@ -56,7 +56,7 @@ impl Display for AppError {
         let kind = self.kind.to_string();
         let header = format!(
             "\n--{kind}{sep}",
-            sep = "-".repeat(width.checked_sub(kind.len() + 2).unwrap_or(0))
+            sep = "-".repeat(width.saturating_sub(kind.len() + 2))
         );
         let body = format!(
             "\nINFO: {info}\n\n{details}",

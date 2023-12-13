@@ -256,7 +256,7 @@ fn request_download_of_missing_items(
     }
 
     let urls = audio_urls
-        .into_iter()
+        .iter()
         .flat_map(|url| {
             if url.kind() != list_url.kind() {
                 log::warn!(
@@ -292,9 +292,7 @@ fn request_download_of_missing_items(
 impl AudioIdentifier {
     async fn into_required_info(self) -> Result<DownloadRequiredInformation, AppError> {
         let url = match self {
-            Self::Local { uid } => {
-                return Ok(DownloadRequiredInformation::StoredLocally { uid: uid.into() })
-            }
+            Self::Local { uid } => return Ok(DownloadRequiredInformation::StoredLocally { uid }),
             Self::Youtube { url } => url,
         };
 
@@ -306,7 +304,7 @@ impl AudioIdentifier {
                 url: YoutubeVideoUrl(url.into()),
             }),
             YoutubeContentType::Playlist => {
-                let urls = match get_playlist_video_urls(&url, yt_api_key()).await {
+                let urls = match get_playlist_video_urls(url, yt_api_key()).await {
                     Ok(urls) => urls,
                     Err(err) => return Err(err),
                 };

@@ -148,7 +148,7 @@ impl AudioNode {
 
 /// remove trailing parameters from URL
 pub fn clean_url(url: &str) -> &str {
-    url.split_once("&").map(|(str, _)| str).unwrap_or(url)
+    url.split_once('&').map(|(str, _)| str).unwrap_or(url)
 }
 
 pub fn extract_queue_metadata<ADL: AudioDataLocator>(

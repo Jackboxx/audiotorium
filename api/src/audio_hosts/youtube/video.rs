@@ -29,8 +29,7 @@ impl From<YoutubeVideo> for AudioMetadata {
         let duration = value
             .content_details
             .duration()
-            .map(|dur| dur.try_into().ok())
-            .flatten();
+            .and_then(|dur| dur.try_into().ok());
 
         AudioMetadata {
             name: Some(value.snippet.title).into(),
@@ -43,7 +42,7 @@ impl From<YoutubeVideo> for AudioMetadata {
 
 impl YoutubeVideoContentDetails {
     fn duration(&self) -> Option<u128> {
-        parse_duration::parse(&self.duration_iso_8601.replace("M", "m"))
+        parse_duration::parse(&self.duration_iso_8601.replace('M', "m"))
             .map(|t| t.as_millis())
             .ok()
     }
