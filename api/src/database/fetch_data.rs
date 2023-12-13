@@ -149,3 +149,24 @@ pub async fn get_playlist_items_from_db(
         ],
     )
 }
+
+pub async fn get_next_position_item_for_playlist(playlist_uid: &str) -> Result<i32, AppError> {
+    struct Position {
+        position: Option<i32>,
+    }
+
+    let position = sqlx::query_as!(
+        Position,
+        r#"SELECT MAX(position) as "position" FROM audio_playlist_item WHERE playlist_identifier = $1"#,
+        playlist_uid
+    )
+    .fetch_one(db_pool())
+    .await
+    .into_app_err(
+        "failed to audio item position in playlist ",
+        AppErrorKind::Database,
+        &[&format!("PLAYLIST_UID: {playlist_uid}")],
+    )?;
+
+    Ok(position.position.map(|x| x + 1).unwrap_or(0))
+}
