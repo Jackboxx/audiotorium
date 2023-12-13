@@ -58,13 +58,11 @@ pub async fn get_playlist_video_urls(
         ));
     };
 
-    let api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet,status&maxResults=50&playlistId={playlist_id}&key={api_key}");
-    let resp_text = get_api_data(&api_url).await?;
-
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct YoutubePlaylistItems {
         items: Vec<YoutubePlaylistItem>,
+        next_page_token: Option<String>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -86,10 +84,21 @@ pub async fn get_playlist_video_urls(
         video_id: String,
     }
 
-    let playlist_items: YoutubePlaylistItems = parse_api_data(&resp_text, &api_url)?;
+    let base_api_url = format!("https://youtube.googleapis.com/youtube/v3/playlistItems?part=snippet,status&maxResults=50&playlistId={playlist_id}&key={api_key}");
+    let resp_text = get_api_data(&base_api_url).await?;
+
+    let mut response: YoutubePlaylistItems = parse_api_data(&resp_text, &base_api_url)?;
+    let mut playlist_items = response.items;
+
+    while let Some(token) = response.next_page_token {
+        let api_url = format!("{base_api_url}&pageToken={token}");
+        let resp_text = get_api_data(&api_url).await?;
+
+        response = parse_api_data(&resp_text, &api_url)?;
+        playlist_items.append(&mut response.items);
+    }
 
     Ok(playlist_items
-        .items
         .into_iter()
         .filter_map(|item| {
             is_public(&item.status).then_some(
