@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use actix::{
     ActorFutureExt, AsyncContext, Handler, Message, Recipient, ResponseActFuture, WrapFuture,
@@ -38,7 +38,7 @@ pub struct AsyncAddQueueItem(pub AddQueueItemParams);
 pub enum LocalAudioMetadata {
     Found {
         metadata: AudioMetadata,
-        path: PathBuf,
+        uid: ItemUid<Arc<str>>,
     },
     NotFound {
         url: AudioUrl,
@@ -80,11 +80,11 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
                         match kind {
                             Some(AudioKind::YoutubeVideo) => {
-                                match get_audio_metadata_from_db(&uid.0).await {
+                                match get_audio_metadata_from_db(&uid).await {
                                     Ok(Some(metadata)) => {
                                         Ok(MetadataQueryResult::Single(LocalAudioMetadata::Found {
                                             metadata,
-                                            path: uid.to_path_with_ext(),
+                                            uid,
                                         }))
                                     }
                                     Ok(None) => Err(AppError::new(
@@ -96,7 +96,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                 }
                             }
                             Some(AudioKind::YoutubePlaylist) => {
-                                match get_playlist_items_from_db(&uid.0, None, None).await {
+                                match get_playlist_items_from_db(&uid, None, None).await {
                                     Ok(items) => Ok(MetadataQueryResult::ManyLocal(items)),
                                     Err(err) => Err(err),
                                 }
@@ -112,15 +112,10 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                         let uid = url.uid();
                         get_audio_metadata_from_db(&uid).await.map(|res| {
                             MetadataQueryResult::Single(
-                                res.map(|md| LocalAudioMetadata::Found {
-                                    metadata: md,
-                                    path: url.to_path_with_ext(),
-                                })
-                                .unwrap_or(
-                                    LocalAudioMetadata::NotFound {
+                                res.map(|md| LocalAudioMetadata::Found { metadata: md, uid })
+                                    .unwrap_or(LocalAudioMetadata::NotFound {
                                         url: AudioUrl::Youtube(url.0),
-                                    },
-                                ),
+                                    }),
                             )
                         })
                     }
@@ -142,7 +137,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                                 Some(metadata) => {
                                     metadata_list.push(LocalAudioMetadata::Found {
                                         metadata,
-                                        path: youtube_url.to_path_with_ext(),
+                                        uid: youtube_url.uid(),
                                     });
 
                                     store_playlist_item_relation_if_not_exists(
@@ -192,7 +187,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                     let existing_metadata = metadata
                         .into_iter()
                         .filter_map(|data| match data {
-                            LocalAudioMetadata::Found { metadata, path } => Some((path, metadata)),
+                            LocalAudioMetadata::Found { metadata, uid } => Some((uid, metadata)),
                             _ => None,
                         })
                         .collect();
@@ -208,13 +203,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                     );
                 }
                 Ok(MetadataQueryResult::ManyLocal(items)) => {
-                    play_existing_playlist_items(
-                        act,
-                        items
-                            .iter()
-                            .map(|(uid, m)| (uid.to_path_with_ext(), m.clone()))
-                            .collect(),
-                    );
+                    play_existing_playlist_items(act, items);
                 }
                 Err(err_resp) => {
                     act.multicast(err_resp);
@@ -226,16 +215,17 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
 
 fn play_existing_playlist_items(
     node: &mut AudioNode,
-    metadata_list: Arc<[(PathBuf, AudioMetadata)]>,
+    metadata_list: Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>,
 ) {
     if metadata_list.is_empty() {
         return;
     }
 
-    for (path, metadata) in metadata_list.iter().cloned() {
+    for (uid, metadata) in metadata_list.iter().cloned() {
         let audio_item = AudioPlayerQueueItem {
             metadata,
-            locator: path,
+            locator: uid.to_path_with_ext(),
+            identifier: uid,
         };
 
         let _ = node.player.push_to_queue(audio_item);
@@ -334,10 +324,11 @@ fn handle_add_single_queue_item(
     node_addr: Recipient<NotifyDownloadUpdate>,
 ) -> Option<Result<AudioNodeInfoStreamMessage, AppError>> {
     match data {
-        LocalAudioMetadata::Found { metadata, path } => {
+        LocalAudioMetadata::Found { metadata, uid } => {
             if let Err(err) = node.player.push_to_queue(AudioPlayerQueueItem {
                 metadata,
-                locator: path,
+                locator: uid.to_path_with_ext(),
+                identifier: uid,
             }) {
                 return Some(Err(err.into_app_err(
                     "failed to auto play first song,",

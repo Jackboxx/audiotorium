@@ -3,12 +3,13 @@ use std::{collections::HashMap, sync::Arc};
 use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResponse};
 
 use crate::{
-    audio_playback::audio_player::AudioPlayer,
+    audio_playback::audio_player::{AudioInfo, AudioPlayer},
     downloader::actor::AudioDownloader,
     node::{
         health::AudioNodeHealth,
         node_server::{AudioNode, AudioNodeInfo, SourceName},
     },
+    state_storage::{restore_state_actor::RestoreStateActor, AppStateRecoveryInfo, AudioStateInfo},
     streams::brain_streams::{AudioBrainInfoStreamMessage, AudioBrainInfoStreamType},
     utils::{get_audio_sources, log_msg_received},
 };
@@ -17,6 +18,8 @@ use super::brain_session::{AudioBrainSession, BrainSessionWsResponse};
 
 pub struct AudioBrain {
     downloader_addr: Addr<AudioDownloader>,
+    restore_state_addr: Addr<RestoreStateActor>,
+    restored_state: AppStateRecoveryInfo,
     nodes: HashMap<SourceName, (Addr<AudioNode>, AudioNodeInfo)>,
     sessions: HashMap<usize, Addr<AudioBrainSession>>,
 }
@@ -53,9 +56,15 @@ pub struct BrainDisconnect {
 }
 
 impl AudioBrain {
-    pub fn new(downloader_addr: Addr<AudioDownloader>) -> Self {
+    pub fn new(
+        downloader_addr: Addr<AudioDownloader>,
+        restore_state_addr: Addr<RestoreStateActor>,
+        restored_state: AppStateRecoveryInfo,
+    ) -> Self {
         Self {
             downloader_addr,
+            restore_state_addr,
+            restored_state,
             nodes: HashMap::default(),
             sessions: HashMap::default(),
         }
@@ -82,12 +91,36 @@ impl Actor for AudioBrain {
         log::info!("stared new 'AudioBrain', CONTEXT: {ctx:?}");
 
         for (source_name, info) in get_audio_sources().into_iter() {
-            if let Ok(player) = AudioPlayer::try_new(source_name.to_owned(), None) {
+            let (restored_state, restored_queue) =
+                match self.restored_state.audio_info.get(&source_name).cloned() {
+                    Some(AudioStateInfo {
+                        playback_state,
+                        current_queue_index,
+                        audio_progress,
+                        audio_volume,
+                        restored_queue,
+                        ..
+                    }) => (
+                        AudioInfo {
+                            playback_state,
+                            current_queue_index,
+                            audio_progress,
+                            audio_volume,
+                        },
+                        restored_queue,
+                    ),
+                    None => Default::default(),
+                };
+
+            if let Ok(player) =
+                AudioPlayer::try_new(source_name.to_owned(), None, restored_state, restored_queue)
+            {
                 let node = AudioNode::new(
                     source_name.to_owned(),
                     player,
                     ctx.address(),
                     self.downloader_addr.clone(),
+                    self.restore_state_addr.clone(),
                 );
                 let node_addr = node.start();
 

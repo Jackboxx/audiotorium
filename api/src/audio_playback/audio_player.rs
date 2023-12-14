@@ -46,9 +46,10 @@ struct AudioProcessor {
     read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
     had_cache_miss_last_cycle: bool,
     info: ProcessorInfo,
+    node_addr: Option<Addr<AudioNode>>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, TS)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct AudioInfo {
@@ -56,6 +57,17 @@ pub struct AudioInfo {
     pub current_queue_index: usize,
     pub audio_progress: f64,
     pub audio_volume: f32,
+}
+
+impl Default for AudioInfo {
+    fn default() -> Self {
+        Self {
+            audio_volume: 1.0,
+            audio_progress: Default::default(),
+            current_queue_index: Default::default(),
+            playback_state: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -99,6 +111,7 @@ pub enum AudioProcessorMessage {
     SetVolume(f32),
     SetState(PlaybackState),
     SetProgress(f64),
+    Addr(Option<Addr<AudioNode>>),
 }
 
 impl ProcessorInfo {
@@ -115,20 +128,27 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
     pub fn try_new(
         source_name: SourceName,
         node_addr: Option<Addr<AudioNode>>,
+        restored_state: AudioInfo,
+        restored_queue: Vec<AudioPlayerQueueItem<ADL>>,
     ) -> anyhow::Result<Self> {
         let (device, config) = setup_device(&source_name)?;
-        Ok(Self {
+
+        let mut player = Self {
             source_name,
             device,
             config,
-            queue: Vec::new(),
+            queue: restored_queue,
             current_stream: None,
             processor_msg_buffer: None,
             node_addr,
-            current_volume: 1.0,
-            queue_head: 0,
+            current_volume: restored_state.audio_volume,
+            queue_head: restored_state.current_queue_index,
             loop_start_end: None,
-        })
+        };
+
+        player.restore_state(restored_state);
+
+        Ok(player)
     }
 
     pub fn try_recover_device(&mut self, current_progress: f64) -> anyhow::Result<()> {
@@ -256,6 +276,14 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
         }
     }
 
+    pub fn loop_bounds(&self) -> Option<LoopBounds> {
+        if let Some((start, end)) = self.loop_start_end {
+            Some(LoopBounds { start, end })
+        } else {
+            None
+        }
+    }
+
     pub fn get_locator(&self) -> Option<ADL> {
         self.queue
             .get(self.queue_head)
@@ -340,7 +368,27 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
     }
 
     pub fn set_addr(&mut self, node_addr: Option<Addr<AudioNode>>) {
-        self.node_addr = node_addr;
+        self.node_addr = node_addr.clone();
+
+        if let Some(buffer) = self.processor_msg_buffer.as_mut() {
+            let _ = buffer.push(AudioProcessorMessage::Addr(node_addr));
+        }
+    }
+
+    fn restore_state(&mut self, info: AudioInfo) {
+        self.queue_head = info.current_queue_index;
+
+        if let Some(locator) = self.get_locator() {
+            if let Err(err) = self.play(&locator) {
+                log::error!("failed to play audio after restore\nERROR: {err}")
+            }
+
+            self.set_volume(info.audio_volume);
+            self.set_stream_progress(info.audio_progress);
+            self.set_stream_playback_state(info.playback_state);
+        } else {
+            self.queue_head = 0
+        }
     }
 
     fn play(&mut self, locator: &ADL) -> anyhow::Result<()> {
@@ -350,11 +398,15 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
 
         let read_disk_stream = locator.load_audio_data()?;
 
-        let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(1);
+        let (producer, consumer) = RingBuffer::<AudioProcessorMessage>::new(16);
         self.processor_msg_buffer = Some(producer);
 
-        let mut processor =
-            AudioProcessor::new(consumer, Some(read_disk_stream), self.current_volume);
+        let mut processor = AudioProcessor::new(
+            consumer,
+            Some(read_disk_stream),
+            self.node_addr.clone(),
+            self.current_volume,
+        );
 
         let mut msg_handler = MessageSendHandler::with_limiters(vec![
             Box::new(ChangeDetector::<AudioProcessorToNodeMessage>::new(Some(
@@ -370,7 +422,6 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
             Box::<RateLimiter>::default(),
         ]);
 
-        let addr = self.node_addr.clone();
         let addr_for_err = self.node_addr.clone();
 
         let new_stream = self.device.build_output_stream(
@@ -380,7 +431,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                     AudioStreamState::Finished => {
                         processor.read_disk_stream = None;
 
-                        if let Some(addr) = addr.as_ref() {
+                        if let Some(addr) = processor.node_addr.as_ref() {
                             if let Err(err) = addr.try_send(AudioNodeCommand::PlayNext) {
                                 log::error!("failed to play next audio in queue, ERROR: {err}");
                             }
@@ -391,7 +442,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                             AudioNodeHealthMild::Buffering,
                         ));
 
-                        if let Some(addr) = addr.as_ref() {
+                        if let Some(addr) = processor.node_addr.as_ref() {
                             msg_handler.send_msg(msg, addr);
                         }
                     }
@@ -399,7 +450,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         let msg =
                             AudioProcessorToNodeMessage::AudioStateInfo(processor.info.clone());
 
-                        if let Some(addr) = addr.as_ref() {
+                        if let Some(addr) = processor.node_addr.as_ref() {
                             msg_handler.send_msg(msg, addr);
                         }
                     }
@@ -411,7 +462,7 @@ impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
                         AudioNodeHealthPoor::AudioStreamReadFailed,
                     ));
 
-                    if let Some(addr) = addr.as_ref() {
+                    if let Some(addr) = processor.node_addr.as_ref() {
                         msg_handler.send_msg(msg, addr);
                     }
                 }
@@ -447,11 +498,13 @@ impl AudioProcessor {
     fn new(
         msg_buffer: Consumer<AudioProcessorMessage>,
         read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+        node_addr: Option<Addr<AudioNode>>,
         volume: f32,
     ) -> Self {
         Self {
             msg_buffer,
             read_disk_stream,
+            node_addr,
             had_cache_miss_last_cycle: false,
             info: ProcessorInfo::new(volume),
         }
@@ -466,6 +519,7 @@ impl AudioProcessor {
 
         while let Ok(msg) = self.msg_buffer.pop() {
             match msg {
+                AudioProcessorMessage::Addr(addr) => self.node_addr = addr,
                 AudioProcessorMessage::SetVolume(volume) => self.info.audio_volume = volume,
                 AudioProcessorMessage::SetState(state) => self.info.playback_state = state,
                 AudioProcessorMessage::SetProgress(percentage) => {

@@ -3,11 +3,11 @@ use actix::{
 };
 
 use crate::{
-    audio_playback::audio_player::AudioInfo, downloader::actor::SerializableDownloadAudioRequest,
-    error::AppError, node::node_server::SourceName, path::state_recovery_file_path,
+    downloader::actor::SerializableDownloadAudioRequest, error::AppError,
+    node::node_server::SourceName, path::state_recovery_file_path,
 };
 
-use super::AppStateRecoveryInfo;
+use super::{AppStateRecoveryInfo, AudioStateInfo};
 
 const STORE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(3000);
 
@@ -18,16 +18,24 @@ pub struct RestoreStateActor {
 }
 
 impl RestoreStateActor {
-    pub fn load_or_default() -> Self {
-        let state: AppStateRecoveryInfo = match std::fs::read(state_recovery_file_path()) {
+    pub async fn load_or_default() -> Self {
+        let mut state: AppStateRecoveryInfo = match std::fs::read(state_recovery_file_path()) {
             Ok(bytes) => bincode::deserialize(&bytes).unwrap_or_default(),
             Err(_) => Default::default(),
         };
+
+        for state in state.audio_info.values_mut() {
+            state.restore_queue().await;
+        }
 
         Self {
             current_state: state,
             ..Default::default()
         }
+    }
+
+    pub fn state(&self) -> AppStateRecoveryInfo {
+        self.current_state.clone()
     }
 
     fn store_state(&self) -> Result<(), AppError> {
@@ -43,6 +51,8 @@ impl Actor for RestoreStateActor {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         log::info!("stared new 'RestoreStateActor', CONTEXT: {ctx:?}");
+
+        ctx.notify(StoreState);
     }
 }
 
@@ -90,7 +100,7 @@ impl Handler<DownloadQueueStateUpdateMessage> for RestoreStateActor {
 
 #[derive(Debug, Message)]
 #[rtype(result = "()")]
-pub struct AudioInfoStateUpdateMessage((SourceName, AudioInfo));
+pub struct AudioInfoStateUpdateMessage(pub (SourceName, AudioStateInfo));
 
 impl Handler<AudioInfoStateUpdateMessage> for RestoreStateActor {
     type Result = ();

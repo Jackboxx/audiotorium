@@ -9,14 +9,14 @@ pub mod download_identifier;
 pub mod info;
 mod youtube;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum DownloadRequiredInformation {
     StoredLocally { uid: Arc<str> },
     YoutubeVideo { url: YoutubeVideoUrl<Arc<str>> },
     YoutubePlaylist(YoutubePlaylistDownloadInfo),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct YoutubePlaylistDownloadInfo {
     pub playlist_url: YoutubePlaylistUrl<Arc<str>>,
     pub video_urls: Arc<[Arc<str>]>,

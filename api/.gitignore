@@ -1,7 +1,8 @@
 target
 audio
+/dev/
+/prod/
 db-data
-audio-dev
 db-data-dev
 *.db
 *.log

@@ -12,7 +12,7 @@ pub fn state_recovery_file_path() -> PathBuf {
 }
 
 fn parent_dir<'a>() -> &'a Path {
-    if cfg!(not(debug_assertions)) {
+    if cfg!(debug_assertions) {
         Path::new(DEV_DIR)
     } else {
         Path::new(PROD_DIR)

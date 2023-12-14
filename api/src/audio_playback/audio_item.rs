@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use creek::{OpenError, ReadDiskStream, SymphoniaDecoder};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use ts_rs::TS;
 
-use crate::opt_arc::OptionArcStr;
+use crate::{downloader::download_identifier::ItemUid, opt_arc::OptionArcStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
 #[ts(export, export_to = "../app/src/api-types/")]
@@ -28,6 +28,7 @@ impl AudioDataLocator for PathBuf {
 
 #[derive(Debug, Clone)]
 pub struct AudioPlayerQueueItem<ADL: AudioDataLocator> {
+    pub identifier: ItemUid<Arc<str>>,
     pub metadata: AudioMetadata,
     pub locator: ADL,
 }

@@ -52,19 +52,27 @@ impl From<PlaylistQueryResult> for (ItemUid<Arc<str>>, PlaylistMetadata) {
     }
 }
 
-pub async fn get_audio_metadata_from_db(uid: &str) -> Result<Option<AudioMetadata>, AppError> {
-    sqlx::query_as!(
+pub async fn get_audio_metadata_from_db<T: AsRef<str> + std::fmt::Debug>(
+    uid: &ItemUid<T>,
+) -> Result<Option<AudioMetadata>, AppError> {
+    let uid = uid.0.as_ref();
+
+    async fn inner(uid: &str) -> Result<Option<AudioMetadata>, AppError> {
+        sqlx::query_as!(
         AudioMetadata,
         "SELECT name, author, duration, cover_art_url FROM audio_metadata where identifier = $1",
         uid
     )
-    .fetch_optional(db_pool())
-    .await
-    .into_app_err(
-        "failed to get audio metdata",
-        AppErrorKind::Database,
-        &[&format!("UID: {uid}")],
-    )
+        .fetch_optional(db_pool())
+        .await
+        .into_app_err(
+            "failed to get audio metdata",
+            AppErrorKind::Database,
+            &[&format!("UID: {uid}")],
+        )
+    }
+
+    inner(uid).await
 }
 
 pub async fn get_all_audio_metadata_from_db(
@@ -115,47 +123,62 @@ pub async fn get_all_playlist_metadata_from_db(
     )
 }
 
-pub async fn get_playlist_items_from_db(
-    playlist_uid: &str,
+pub async fn get_playlist_items_from_db<T: AsRef<str> + std::fmt::Debug>(
+    playlist_uid: &ItemUid<T>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, AppError> {
-    let limit = limit.unwrap_or(50);
-    let offset = offset.unwrap_or(0);
+    let playlist_uid = playlist_uid.0.as_ref();
 
-    sqlx::query_as!(
-        AudioQueryResult,
-        "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url
-            FROM audio_metadata audio
-        INNER JOIN audio_playlist_item items 
-            ON audio.identifier = items.item_identifier
-        WHERE items.playlist_identifier = $1
-        ORDER BY position
-        LIMIT $2 OFFSET $3",
-        playlist_uid,
-        limit,
-        offset,
-    )
-    .fetch_all(db_pool())
-    .await
-    .map(|vec| vec.into_iter().map(Into::into).collect())
-    .into_app_err(
-        "failed to get all audio items in playlist ",
-        AppErrorKind::Database,
-        &[
-            &format!("PLAYLIST_UID: {playlist_uid}"),
-            &format!("LIMIT: {limit}"),
-            &format!("OFFSET: {offset}"),
-        ],
-    )
-}
+    async fn inner(
+        playlist_uid: &str,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Arc<[(ItemUid<Arc<str>>, AudioMetadata)]>, AppError> {
+        let limit = limit.unwrap_or(50);
+        let offset = offset.unwrap_or(0);
 
-pub async fn get_next_position_item_for_playlist(playlist_uid: &str) -> Result<i32, AppError> {
-    struct Position {
-        position: Option<i32>,
+        sqlx::query_as!(
+            AudioQueryResult,
+            "SELECT audio.identifier, audio.name, audio.author, audio.duration, audio.cover_art_url
+             FROM audio_metadata audio
+                 INNER JOIN audio_playlist_item items 
+                 ON audio.identifier = items.item_identifier
+             WHERE items.playlist_identifier = $1
+             ORDER BY position
+             LIMIT $2 OFFSET $3",
+            playlist_uid,
+            limit,
+            offset,
+        )
+        .fetch_all(db_pool())
+        .await
+        .map(|vec| vec.into_iter().map(Into::into).collect())
+        .into_app_err(
+            "failed to get all audio items in playlist ",
+            AppErrorKind::Database,
+            &[
+                &format!("PLAYLIST_UID: {playlist_uid}"),
+                &format!("LIMIT: {limit}"),
+                &format!("OFFSET: {offset}"),
+            ],
+        )
     }
 
-    let position = sqlx::query_as!(
+    inner(playlist_uid, limit, offset).await
+}
+
+pub async fn get_next_position_item_for_playlist<T: AsRef<str> + std::fmt::Debug>(
+    playlist_uid: &ItemUid<T>,
+) -> Result<i32, AppError> {
+    let playlist_uid = playlist_uid.0.as_ref();
+
+    async fn inner(playlist_uid: &str) -> Result<i32, AppError> {
+        struct Position {
+            position: Option<i32>,
+        }
+
+        let position = sqlx::query_as!(
         Position,
         r#"SELECT MAX(position) as "position" FROM audio_playlist_item WHERE playlist_identifier = $1"#,
         playlist_uid
@@ -168,5 +191,8 @@ pub async fn get_next_position_item_for_playlist(playlist_uid: &str) -> Result<i
         &[&format!("PLAYLIST_UID: {playlist_uid}")],
     )?;
 
-    Ok(position.position.map(|x| x + 1).unwrap_or(0))
+        Ok(position.position.map(|x| x + 1).unwrap_or(0))
+    }
+
+    inner(playlist_uid).await
 }

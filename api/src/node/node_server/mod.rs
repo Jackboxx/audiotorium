@@ -16,6 +16,7 @@ use crate::{
     brain::brain_server::AudioBrain,
     downloader::{actor::AudioDownloader, info::DownloadInfo},
     error::AppError,
+    state_storage::restore_state_actor::RestoreStateActor,
 };
 
 use super::{health::AudioNodeHealth, node_session::AudioNodeSession};
@@ -32,6 +33,7 @@ pub struct AudioNode {
     pub(super) current_processor_info: ProcessorInfo,
     pub(super) player: AudioPlayer<PathBuf>,
     pub(super) downloader_addr: Addr<AudioDownloader>,
+    pub(super) restore_state_addr: Addr<RestoreStateActor>,
     pub(super) active_downloads: HashSet<DownloadInfo>,
     pub(super) failed_downloads: HashMap<DownloadInfo, AppError>,
     pub(super) server_addr: Addr<AudioBrain>,
@@ -95,17 +97,19 @@ impl AudioNode {
         player: AudioPlayer<PathBuf>,
         server_addr: Addr<AudioBrain>,
         downloader_addr: Addr<AudioDownloader>,
+        restore_state_addr: Addr<RestoreStateActor>,
     ) -> Self {
         Self {
             source_name,
+            current_processor_info: ProcessorInfo::new(1.0),
             player,
             downloader_addr,
+            restore_state_addr,
             server_addr,
             active_downloads: HashSet::default(),
             failed_downloads: HashMap::default(),
             sessions: HashMap::default(),
             health: AudioNodeHealth::Good,
-            current_processor_info: ProcessorInfo::new(1.0),
         }
     }
 

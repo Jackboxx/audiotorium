@@ -11,7 +11,7 @@ use crate::{
     error::{AppError, AppErrorKind, IntoAppError},
     utils::log_msg_received,
 };
-use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
@@ -19,7 +19,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tokio::sync::Mutex;
 
-use super::{download_identifier::YoutubeVideoUrl, info::OptionalDownloadInfo};
+use super::{
+    download_identifier::{ItemUid, YoutubeVideoUrl},
+    info::OptionalDownloadInfo,
+};
 
 const MAX_CONSECUTIVE_BATCHES: usize = 10;
 
@@ -36,14 +39,14 @@ pub struct DownloadAudioRequest {
     pub required_info: DownloadRequiredInformation,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableDownloadAudioRequest {
     pub source_name: Option<Arc<str>>,
     pub required_info: DownloadRequiredInformation,
 }
 
 type SingleDownloadFinished =
-    Result<(DownloadInfo, AudioMetadata, PathBuf), (DownloadInfo, AppError)>;
+    Result<(DownloadInfo, AudioMetadata, ItemUid<Arc<str>>), (DownloadInfo, AppError)>;
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -171,7 +174,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                             )
                             .await
                             {
-                                Ok(()) => Ok((info, metadata, video_url.to_path_with_ext())),
+                                Ok(()) => Ok((info, metadata, video_url.uid())),
                                 Err(err) => Err((info, err)),
                             }
                         }

@@ -7,6 +7,7 @@ use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::actor::AudioDownloader;
 use audio_manager_api::path::audio_data_dir;
 use audio_manager_api::rest_data_access::{get_audio, get_audio_in_playlist, get_playlists};
+use audio_manager_api::state_storage::restore_state_actor::RestoreStateActor;
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
 use audio_manager_api::{db_pool, AppData, POOL, YOUTUBE_API_KEY};
@@ -55,17 +56,21 @@ async fn main() -> std::io::Result<()> {
         .set(youtube_api_key)
         .expect("should never fail");
 
+    clear_dev_db().await;
+
     let download_arbiter = Arbiter::new();
 
     let downloader = AudioDownloader::new(download_arbiter);
     let downloader_addr = downloader.start();
 
-    let queue_server = AudioBrain::new(downloader_addr);
+    let restore_state_actor = RestoreStateActor::load_or_default().await;
+    let restored_state = restore_state_actor.state();
+    let restore_state_addr = restore_state_actor.start();
+
+    let queue_server = AudioBrain::new(downloader_addr, restore_state_addr, restored_state);
     let server_addr = queue_server.start();
 
     let data = Data::new(AppData::new(server_addr));
-
-    clear_dev_db().await;
 
     HttpServer::new(move || {
         let cors = Cors::default()

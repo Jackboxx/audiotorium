@@ -3,6 +3,7 @@ use actix::{AsyncContext, Handler, Message};
 use crate::{
     audio_playback::audio_player::{AudioInfo, ProcessorInfo},
     brain::brain_server::AudioNodeToBrainMessage,
+    state_storage::{restore_state_actor::AudioInfoStateUpdateMessage, AudioStateInfo},
     streams::node_streams::AudioNodeInfoStreamMessage,
     utils::log_msg_received,
 };
@@ -31,7 +32,6 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
                 log_msg_received(&self, &msg);
             }
         }
-
         match msg {
             AudioProcessorToNodeMessage::Health(health) => {
                 self.health = health.clone();
@@ -58,13 +58,30 @@ impl Handler<AudioProcessorToNodeMessage> for AudioNode {
             AudioProcessorToNodeMessage::AudioStateInfo(processor_info) => {
                 self.current_processor_info = processor_info.clone();
 
+                self.restore_state_addr
+                    .do_send(AudioInfoStateUpdateMessage((
+                        self.source_name.clone(),
+                        AudioStateInfo {
+                            current_queue_index: self.player.queue_head(),
+                            audio_volume: processor_info.audio_volume,
+                            audio_progress: processor_info.audio_progress,
+                            playback_state: processor_info.playback_state.clone(),
+                            restored_queue: vec![],
+                            queue: self
+                                .player
+                                .queue()
+                                .iter()
+                                .map(|item| item.identifier.clone())
+                                .collect(),
+                        },
+                    )));
+
                 let msg = AudioNodeInfoStreamMessage::AudioStateInfo(AudioInfo {
                     current_queue_index: self.player.queue_head(),
                     audio_volume: processor_info.audio_volume,
                     audio_progress: processor_info.audio_progress,
                     playback_state: processor_info.playback_state,
                 });
-
                 self.multicast(msg);
             }
         }

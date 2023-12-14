@@ -1,6 +1,8 @@
 use crate::{
     audio_playback::audio_item::AudioPlayerQueueItem,
-    downloader::{actor::NotifyDownloadUpdate, info::DownloadInfo},
+    downloader::{
+        actor::NotifyDownloadUpdate, download_identifier::Identifier, info::DownloadInfo,
+    },
     error::{AppErrorKind, IntoAppError},
     streams::node_streams::{AudioNodeInfoStreamMessage, RunningDownloadInfo},
 };
@@ -34,13 +36,14 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
 
                 self.multicast(msg);
             }
-            NotifyDownloadUpdate::SingleFinished(Ok((info, metadata, path))) => {
+            NotifyDownloadUpdate::SingleFinished(Ok((info, metadata, uid))) => {
                 self.active_downloads.remove(&info);
                 self.failed_downloads.remove(&info);
 
                 let item = AudioPlayerQueueItem {
                     metadata,
-                    locator: path,
+                    locator: uid.to_path_with_ext(),
+                    identifier: uid,
                 };
 
                 let has_errored = if let Err(err) = self.player.push_to_queue(item) {

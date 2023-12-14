@@ -12,6 +12,7 @@ use crate::{
         },
         PlaylistMetadata,
     },
+    downloader::download_identifier::ItemUid,
 };
 
 #[derive(Debug, Serialize)]
@@ -83,7 +84,8 @@ pub async fn get_audio_in_playlist(
     playlist_uid: web::Path<Arc<str>>,
     web::Query(OffsetLimitParams { limit, offset }): web::Query<OffsetLimitParams>,
 ) -> HttpResponse {
-    match get_playlist_items_from_db(playlist_uid.as_ref(), limit, offset).await {
+    let uid = ItemUid(playlist_uid.into_inner());
+    match get_playlist_items_from_db(&uid, limit, offset).await {
         Ok(items) => {
             let result: Vec<StoredAudioData> = items
                 .iter()

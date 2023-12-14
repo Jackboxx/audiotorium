@@ -43,10 +43,9 @@ pub async fn process_single_youtube_video(
         }
     };
 
+    let uid = url.uid();
     addr.do_send(NotifyDownloadUpdate::SingleFinished(Ok((
-        info,
-        metadata,
-        url.to_path_with_ext(),
+        info, metadata, uid,
     ))));
 }
 
@@ -57,7 +56,8 @@ pub async fn download_and_store_youtube_audio_with_metadata(
     let metadata: AudioMetadata =
         AudioMetadata::from(get_video_metadata(url.0.as_ref(), yt_api_key()).await?);
 
-    let key = url.uid();
+    let uid = url.uid();
+    let key = uid.0.as_ref();
     sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",
                     key,
                     metadata.name.inner_as_ref(),
