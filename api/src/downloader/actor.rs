@@ -15,6 +15,7 @@ use std::{collections::VecDeque, path::PathBuf, sync::Arc, time::Duration};
 
 use actix::{Actor, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tokio::sync::Mutex;
 
@@ -30,7 +31,14 @@ pub struct AudioDownloader {
 #[derive(Debug, Message)]
 #[rtype(result = "()")]
 pub struct DownloadAudioRequest {
+    pub source_name: Option<Arc<str>>,
     pub addr: Recipient<NotifyDownloadUpdate>,
+    pub required_info: DownloadRequiredInformation,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SerializableDownloadAudioRequest {
+    pub source_name: Option<Arc<str>>,
     pub required_info: DownloadRequiredInformation,
 }
 
@@ -110,6 +118,7 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
 
     if let Some(req) = queue.pop_front() {
         let DownloadAudioRequest {
+            source_name,
             addr,
             required_info,
         } = req;
@@ -194,11 +203,21 @@ async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: 
                     });
 
                     queue.push_back(DownloadAudioRequest {
+                        source_name,
                         addr,
                         required_info: next_batch,
                     });
                 }
             }
+        }
+    }
+}
+
+impl From<DownloadAudioRequest> for SerializableDownloadAudioRequest {
+    fn from(value: DownloadAudioRequest) -> Self {
+        Self {
+            source_name: value.source_name,
+            required_info: value.required_info,
         }
     }
 }

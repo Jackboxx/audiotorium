@@ -5,7 +5,7 @@ use actix_rt::Arbiter;
 use audio_manager_api::brain::brain_server::AudioBrain;
 use audio_manager_api::commands::node_commands::receive_node_cmd;
 use audio_manager_api::downloader::actor::AudioDownloader;
-use audio_manager_api::downloader::AUDIO_DIR;
+use audio_manager_api::path::audio_data_dir;
 use audio_manager_api::rest_data_access::{get_audio, get_audio_in_playlist, get_playlists};
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
@@ -111,7 +111,7 @@ async fn clear_dev_db() {
             .await
             .unwrap();
 
-        fs::remove_dir_all(AUDIO_DIR).unwrap();
-        fs::create_dir(AUDIO_DIR).unwrap();
+        fs::remove_dir_all(audio_data_dir()).unwrap();
+        fs::create_dir(audio_data_dir()).unwrap();
     }
 }

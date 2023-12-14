@@ -25,7 +25,7 @@ pub mod connections;
 pub mod download_notifications;
 pub mod sync_actor;
 
-pub type SourceName = String;
+pub type SourceName = Arc<str>;
 
 pub struct AudioNode {
     pub(super) source_name: SourceName,
@@ -42,7 +42,7 @@ pub struct AudioNode {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../app/src/api-types/")]
 pub struct AudioNodeInfo {
-    pub source_name: String,
+    pub source_name: SourceName,
     pub human_readable_name: String,
     pub health: AudioNodeHealth,
 }
@@ -91,7 +91,7 @@ impl AudioUrl {
 
 impl AudioNode {
     pub fn new(
-        source_name: String,
+        source_name: SourceName,
         player: AudioPlayer<PathBuf>,
         server_addr: Addr<AudioBrain>,
         downloader_addr: Addr<AudioDownloader>,

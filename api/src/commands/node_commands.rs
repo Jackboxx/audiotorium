@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_player::LoopBounds, error::AppError, utils::get_node_by_source_name,
-    AppData,
+    audio_playback::audio_player::LoopBounds, error::AppError, node::node_server::SourceName,
+    utils::get_node_by_source_name, AppData,
 };
 
 /// Commands a client can send to an audio node
@@ -102,7 +102,7 @@ pub struct LoopQueueParams {
 #[post("/commands/node/{source_name}")]
 pub async fn receive_node_cmd(
     data: Data<AppData>,
-    source_name: web::Path<String>,
+    source_name: web::Path<SourceName>,
     cmd: web::Json<AudioNodeCommand>,
 ) -> HttpResponse {
     let node_addr = match get_node_by_source_name(source_name.into_inner(), data.brain_addr()).await

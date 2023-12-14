@@ -200,6 +200,7 @@ impl Handler<AsyncAddQueueItem> for AudioNode {
                     play_existing_playlist_items(act, existing_metadata);
 
                     request_download_of_missing_items(
+                        Some(Arc::clone(&act.source_name)),
                         download_addr,
                         ctx.address().recipient(),
                         list_url,
@@ -246,6 +247,7 @@ fn play_existing_playlist_items(
 }
 
 fn request_download_of_missing_items(
+    source_name: Option<Arc<str>>,
     downloader_addr: Recipient<DownloadAudioRequest>,
     receiver_addr: Recipient<NotifyDownloadUpdate>,
     list_url: AudioUrl,
@@ -280,6 +282,7 @@ fn request_download_of_missing_items(
                 });
 
             let request = DownloadAudioRequest {
+                source_name,
                 addr: receiver_addr,
                 required_info,
             };
@@ -351,6 +354,7 @@ fn handle_add_single_queue_item(
             };
 
             node.downloader_addr.do_send(DownloadAudioRequest {
+                source_name: Some(Arc::clone(&node.source_name)),
                 addr: node_addr,
                 required_info: download_info,
             });

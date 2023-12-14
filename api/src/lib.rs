@@ -16,6 +16,7 @@ pub mod error;
 pub mod message_send_handler;
 pub mod node;
 pub mod opt_arc;
+pub mod path;
 pub mod rest_data_access;
 pub mod state_storage;
 pub mod utils;

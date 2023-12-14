@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     brain::brain_server::{AudioBrain, GetAudioNodeMessage},
-    node::node_server::AudioNode,
+    node::node_server::{AudioNode, SourceName},
 };
 
 const DEFAULT_SAMPLE_RATE: u32 = 48000;
 
 pub async fn get_node_by_source_name(
-    source_name: String,
+    source_name: SourceName,
     addr: &Addr<AudioBrain>,
 ) -> Option<Addr<AudioNode>> {
     addr.send(GetAudioNodeMessage { source_name }).await.ok()?
@@ -62,7 +62,7 @@ pub struct AudioSourceInfo {
     pub human_readable_name: String,
 }
 
-pub type Sources = HashMap<String, AudioSourceInfo>;
+pub type Sources = HashMap<SourceName, AudioSourceInfo>;
 
 pub fn get_audio_sources() -> Sources {
     let source_str = if cfg!(not(debug_assertions)) {

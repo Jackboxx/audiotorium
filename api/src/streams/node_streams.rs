@@ -16,7 +16,7 @@ use crate::{
     audio_playback::{audio_item::AudioMetadata, audio_player::AudioInfo},
     downloader::info::DownloadInfo,
     error::AppError,
-    node::{health::AudioNodeHealth, node_session::AudioNodeSession},
+    node::{health::AudioNodeHealth, node_server::SourceName, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
     AppData,
@@ -73,7 +73,7 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
 #[get("/streams/node/{source_name}")]
 async fn get_node_stream(
     data: Data<AppData>,
-    source_name: web::Path<String>,
+    source_name: web::Path<SourceName>,
     query: web::Query<StreamWantedInfoParams>,
     req: HttpRequest,
     stream: web::Payload,

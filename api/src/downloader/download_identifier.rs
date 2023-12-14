@@ -1,16 +1,13 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use super::AUDIO_DIR;
+use crate::path::audio_data_dir;
 
 pub trait Identifier {
     fn uid(&self) -> String;
     fn to_path(&self) -> PathBuf {
-        Path::new(AUDIO_DIR).join(self.uid())
+        audio_data_dir().join(self.uid())
     }
 
     fn to_path_with_ext(&self) -> PathBuf {

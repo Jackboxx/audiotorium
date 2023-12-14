@@ -113,7 +113,7 @@ impl ProcessorInfo {
 
 impl<ADL: AudioDataLocator + Clone> AudioPlayer<ADL> {
     pub fn try_new(
-        source_name: String,
+        source_name: SourceName,
         node_addr: Option<Addr<AudioNode>>,
     ) -> anyhow::Result<Self> {
         let (device, config) = setup_device(&source_name)?;

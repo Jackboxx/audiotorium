@@ -24,13 +24,13 @@ pub struct AudioBrain {
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "Option<Addr<AudioNode>>")]
 pub struct GetAudioNodeMessage {
-    pub source_name: String,
+    pub source_name: SourceName,
 }
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
 pub enum AudioNodeToBrainMessage {
-    NodeHealthUpdate((String, AudioNodeHealth)),
+    NodeHealthUpdate((SourceName, AudioNodeHealth)),
 }
 
 #[derive(Debug, Clone, Message)]
@@ -96,7 +96,7 @@ impl Actor for AudioBrain {
                     (
                         node_addr,
                         AudioNodeInfo {
-                            source_name: source_name.to_owned(),
+                            source_name,
                             human_readable_name: info.human_readable_name.clone(),
                             health: AudioNodeHealth::Good,
                         },
