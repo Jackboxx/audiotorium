@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use crate::{
     audio_hosts::youtube::video::get_video_metadata,
     audio_playback::audio_item::AudioMetadata,
+    database::fetch_data::get_audio_metadata_from_db,
     error::{AppError, AppErrorKind, IntoAppError},
     yt_api_key,
 };
@@ -53,10 +54,14 @@ pub async fn download_and_store_youtube_audio_with_metadata(
     url: &YoutubeVideoUrl<impl AsRef<str> + std::fmt::Debug>,
     mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<AudioMetadata, AppError> {
+    let uid = url.uid();
+    if let Some(metadata) = get_audio_metadata_from_db(&uid).await? {
+        return Ok(metadata);
+    }
+
     let metadata: AudioMetadata =
         AudioMetadata::from(get_video_metadata(url.0.as_ref(), yt_api_key()).await?);
 
-    let uid = url.uid();
     let key = uid.0.as_ref();
     sqlx::query!("INSERT INTO audio_metadata (identifier, name, author, duration, cover_art_url) values ($1, $2, $3, $4, $5)",
                     key,

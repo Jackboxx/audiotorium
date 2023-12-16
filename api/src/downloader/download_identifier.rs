@@ -38,7 +38,7 @@ impl AudioKind {
         }
     }
 
-    fn prefix(&self) -> &str {
+    pub fn prefix(&self) -> &str {
         match self {
             Self::YoutubeVideo => "youtube_audio_",
             Self::YoutubePlaylist => "youtube_playlist_audio_",
