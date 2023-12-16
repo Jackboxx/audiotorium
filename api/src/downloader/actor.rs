@@ -137,6 +137,13 @@ impl Handler<RestoreQueue> for AudioDownloader {
                 queue.drain(..);
                 queue.append(&mut msg.0.into_iter().collect());
 
+                for item in queue.iter() {
+                    let info: OptionalDownloadInfo = (&item.required_info).into();
+                    if let Some(info) = info.into() {
+                        item.addr.do_send(NotifyDownloadUpdate::Queued(info));
+                    }
+                }
+
                 log::info!("restored {len} items to download queue");
             }
             Err(err) => log::error!("failed to restore download queue\nERROR: {err}"),
