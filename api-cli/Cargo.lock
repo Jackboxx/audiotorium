@@ -550,6 +550,7 @@ name = "audio-manager-api-cli"
 version = "0.1.0"
 dependencies = [
  "audio-manager-api",
+ "bincode",
  "clap",
  "itertools 0.11.0",
  "reqwest",

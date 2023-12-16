@@ -2,6 +2,8 @@ use itertools::Itertools;
 use reqwest::Client;
 use std::{
     fmt::Display,
+    fs,
+    path::PathBuf,
     process::{exit, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -19,6 +21,7 @@ use audio_manager_api::{
         MoveQueueItemParams, PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
         SetAudioVolumeParams,
     },
+    state_storage::AppStateRecoveryInfo,
     streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
 use clap::{Parser, Subcommand};
@@ -49,10 +52,15 @@ pub enum Action {
     #[command(about = "Listen for data")]
     Listen {
         #[arg(short, long)]
-        // command to run on received messages. None = print to stdout
+        /// Command to run on received messages. None = print to stdout
         command: Option<String>,
         #[command(subcommand)]
         con_type: ListenConnectionType,
+    },
+    #[command(about = "Log content of saved server state")]
+    LogState {
+        /// Path to state file
+        path: Option<PathBuf>,
     },
 }
 
@@ -171,6 +179,7 @@ impl Action {
         match self {
             Self::Send { .. } => ("http", "commands"),
             Self::Listen { .. } => ("ws", "streams"),
+            Self::LogState { .. } => ("", ""),
         }
     }
 
@@ -178,6 +187,7 @@ impl Action {
         match self {
             Self::Listen { con_type, .. } => format!("{con_type}"),
             Self::Send { con_type } => format!("{con_type}"),
+            Self::LogState { .. } => Default::default(),
         }
     }
 }
@@ -344,6 +354,15 @@ async fn main() -> Result<(), &'static str> {
             }
             Action::Listen { command, .. } => {
                 listen_on_socket(&url, command);
+            }
+            Action::LogState { path } => {
+                let path = path.unwrap_or(PathBuf::from("../api/dev/state-recovery-info"));
+                let bytes = fs::read(path).unwrap();
+
+                let state: AppStateRecoveryInfo = bincode::deserialize(&bytes).unwrap();
+                let pretty = serde_json::to_string(&state).unwrap();
+
+                println!("{pretty}");
             }
         }
     }
