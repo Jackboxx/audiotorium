@@ -21,6 +21,7 @@ use audio_manager_api::{
         MoveQueueItemParams, PlaySelectedParams, RemoveQueueItemParams, SetAudioProgressParams,
         SetAudioVolumeParams,
     },
+    downloader::download_identifier::{AudioKind, ItemUid},
     state_storage::AppStateRecoveryInfo,
     streams::{brain_streams::AudioBrainInfoStreamType, node_streams::AudioNodeInfoStreamType},
 };
@@ -62,6 +63,8 @@ pub enum Action {
         /// Path to state file
         path: Option<PathBuf>,
     },
+    #[command(about = "Print the original value the uid was created from")]
+    UidValue { uid: Arc<str> },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -180,6 +183,7 @@ impl Action {
             Self::Send { .. } => ("http", "commands"),
             Self::Listen { .. } => ("ws", "streams"),
             Self::LogState { .. } => ("", ""),
+            Self::UidValue { .. } => ("", ""),
         }
     }
 
@@ -188,6 +192,7 @@ impl Action {
             Self::Listen { con_type, .. } => format!("{con_type}"),
             Self::Send { con_type } => format!("{con_type}"),
             Self::LogState { .. } => Default::default(),
+            Self::UidValue { .. } => Default::default(),
         }
     }
 }
@@ -363,6 +368,18 @@ async fn main() -> Result<(), &'static str> {
                 let pretty = serde_json::to_string(&state).unwrap();
 
                 println!("{pretty}");
+            }
+            Action::UidValue { uid } => {
+                let uid = ItemUid(uid);
+
+                let kind = AudioKind::from_uid(&uid).expect("invalid uid provided");
+                let prefix = kind.prefix();
+
+                let uid_str = uid.0.as_ref().trim_start_matches(prefix);
+                let decoded = hex::decode(uid_str).unwrap();
+                let original = String::from_utf8_lossy(&decoded);
+
+                println!("{original}")
             }
         }
     }
