@@ -89,7 +89,7 @@ impl DownloadStateInfo {
             };
         }
 
-        return queue;
+        queue
     }
 }
 
