@@ -9,7 +9,10 @@ use crate::{
         health::AudioNodeHealth,
         node_server::{AudioNode, AudioNodeInfo, SourceName},
     },
-    state_storage::{restore_state_actor::RestoreStateActor, AppStateRecoveryInfo, AudioStateInfo},
+    state_storage::{
+        restore_state_actor::{RestoreDownloadQueue, RestoreStateActor},
+        AppStateRecoveryInfo, AudioStateInfo,
+    },
     streams::brain_streams::{AudioBrainInfoStreamMessage, AudioBrainInfoStreamType},
     utils::{get_audio_sources, log_msg_received},
 };
@@ -137,6 +140,11 @@ impl Actor for AudioBrain {
                 );
             }
         }
+
+        self.restore_state_addr.do_send(RestoreDownloadQueue {
+            download_addr: self.downloader_addr.clone().into(),
+            get_node_addr_addr: ctx.address().into(),
+        })
     }
 }
 

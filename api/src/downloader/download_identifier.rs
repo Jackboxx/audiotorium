@@ -79,10 +79,10 @@ impl<'de> Deserialize<'de> for ItemUid<Arc<str>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct YoutubeVideoUrl<T: AsRef<str> + std::fmt::Debug>(pub T);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct YoutubePlaylistUrl<T: AsRef<str> + std::fmt::Debug>(pub T);
 
 impl<T: AsRef<str> + std::fmt::Debug> Identifier for YoutubeVideoUrl<T> {

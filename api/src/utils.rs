@@ -47,14 +47,15 @@ pub fn setup_device(source_name: &str) -> anyhow::Result<(Device, StreamConfig)>
 
 pub fn log_msg_received<T, M: Debug>(handler: &T, msg: &M) {
     log::info!(
-        "'{}' received message '{}'\ncontent: '{msg:?}'",
+        "{} received by {}\nCONTENT: {msg:?}",
+        type_as_str(msg),
         type_as_str(handler),
-        type_as_str(msg)
     );
 }
 
 fn type_as_str<'a, T: Sized>(_v: &T) -> &'a str {
-    std::any::type_name::<T>()
+    let type_str = std::any::type_name::<T>();
+    type_str.split("::").last().unwrap_or(type_str)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

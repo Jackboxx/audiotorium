@@ -10,11 +10,10 @@ use audio_manager_api::rest_data_access::{get_audio, get_audio_in_playlist, get_
 use audio_manager_api::state_storage::restore_state_actor::RestoreStateActor;
 use audio_manager_api::streams::brain_streams::get_brain_stream;
 use audio_manager_api::streams::node_streams::get_node_stream;
-use audio_manager_api::{db_pool, AppData, POOL, YOUTUBE_API_KEY};
+use audio_manager_api::{db_pool, BRAIN_ADDR, POOL, YOUTUBE_API_KEY};
 use log::LevelFilter;
 
 use actix_cors::Cors;
-use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
 
@@ -60,17 +59,16 @@ async fn main() -> std::io::Result<()> {
 
     let download_arbiter = Arbiter::new();
 
-    let downloader = AudioDownloader::new(download_arbiter);
-    let downloader_addr = downloader.start();
-
     let restore_state_actor = RestoreStateActor::load_or_default().await;
     let restored_state = restore_state_actor.state();
     let restore_state_addr = restore_state_actor.start();
 
-    let queue_server = AudioBrain::new(downloader_addr, restore_state_addr, restored_state);
-    let server_addr = queue_server.start();
+    let downloader = AudioDownloader::new(download_arbiter, restore_state_addr.clone());
+    let downloader_addr = downloader.start();
 
-    let data = Data::new(AppData::new(server_addr));
+    let queue_server = AudioBrain::new(downloader_addr, restore_state_addr, restored_state);
+    let brain_addr = queue_server.start();
+    BRAIN_ADDR.set(brain_addr).expect("should never fail");
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -79,7 +77,6 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header();
 
         App::new()
-            .app_data(data.clone())
             .wrap(cors)
             .service(get_brain_stream)
             .service(get_node_stream)

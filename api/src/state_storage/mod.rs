@@ -1,12 +1,14 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+use actix::Recipient;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     audio_playback::{audio_item::AudioPlayerQueueItem, audio_player::PlaybackState},
+    brain::brain_server::GetAudioNodeMessage,
     database::fetch_data::get_audio_metadata_from_db,
     downloader::{
-        actor::SerializableDownloadAudioRequest,
+        actor::{DownloadAudioRequest, SerializableDownloadAudioRequest},
         download_identifier::{Identifier, ItemUid},
     },
     node::node_server::SourceName,
@@ -48,6 +50,47 @@ impl Default for AudioStateInfo {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct DownloadStateInfo {
     pub queue: Vec<SerializableDownloadAudioRequest>,
+
+    #[serde(skip_serializing, skip_deserializing)]
+    pub restored: bool,
+}
+
+impl DownloadStateInfo {
+    async fn restore_queue(
+        serialized_queue: &[SerializableDownloadAudioRequest],
+        get_node_addr: Recipient<GetAudioNodeMessage>,
+    ) -> Vec<DownloadAudioRequest> {
+        let mut queue = Vec::with_capacity(serialized_queue.len());
+
+        for request in serialized_queue {
+            if let Some(source_name) = request.source_name.as_ref() {
+                match get_node_addr
+                    .send(GetAudioNodeMessage {
+                        source_name: source_name.clone(),
+                    })
+                    .await
+                {
+                    Ok(Some(addr)) => queue.push(DownloadAudioRequest {
+                        addr: addr.into(),
+                        source_name: Some(source_name.clone()),
+                        required_info: request.required_info.clone(),
+                    }),
+                    Ok(None) => {
+                        log::warn!(
+                            "failed to restore download request {request:?}\nbrain doesn't have an address for 'source name' {source_name}"
+                        );
+                    }
+                    Err(err) => {
+                        log::warn!("failed to restore download request {request:?}\nERROR: {err}");
+                    }
+                };
+            } else {
+                log::warn!("failed to restore downlaod request {request:?}\nmissing 'source name'");
+            };
+        }
+
+        return queue;
+    }
 }
 
 impl AudioStateInfo {
@@ -55,15 +98,25 @@ impl AudioStateInfo {
         let mut queue = Vec::with_capacity(self.queue.len());
 
         for uid in self.queue.iter() {
-            if let Ok(Some(metadata)) = get_audio_metadata_from_db(&uid).await {
-                let path = uid.to_path_with_ext();
+            match get_audio_metadata_from_db(uid).await {
+                Ok(Some(metadata)) => {
+                    let path = uid.to_path_with_ext();
 
-                queue.push(AudioPlayerQueueItem {
-                    identifier: uid.clone(),
-                    locator: path,
-                    metadata,
-                })
-            }
+                    queue.push(AudioPlayerQueueItem {
+                        identifier: uid.clone(),
+                        locator: path,
+                        metadata,
+                    })
+                }
+                Ok(None) => {
+                    log::warn!(
+                        "failed to audio queue item with {uid:?}\nno metadata found for uid"
+                    );
+                }
+                Err(err) => {
+                    log::warn!("failed to audio queue item with {uid:?}\nERROR: {err}");
+                }
+            };
         }
 
         self.restored_queue = queue;
@@ -91,7 +144,10 @@ mod tests {
                     restored_queue: vec![],
                 },
             )]),
-            download_info: DownloadStateInfo { queue: vec![] },
+            download_info: DownloadStateInfo {
+                queue: vec![],
+                restored_queue: vec![],
+            },
         };
 
         let bin = bincode::serialize(&state).unwrap();

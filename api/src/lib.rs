@@ -24,6 +24,8 @@ pub mod utils;
 pub static POOL: OnceLock<PgPool> = OnceLock::new(); // set on server start
 pub static YOUTUBE_API_KEY: OnceLock<String> = OnceLock::new(); // set on server start
 
+pub static BRAIN_ADDR: OnceLock<Addr<AudioBrain>> = OnceLock::new(); // set on server start
+
 pub fn db_pool<'a>() -> &'a PgPool {
     POOL.get().expect("pool should be set at server start")
 }
@@ -34,19 +36,11 @@ pub fn yt_api_key<'a>() -> &'a str {
         .expect("youtube api key should be set at server start")
 }
 
+pub fn brain_addr<'a>() -> &'a Addr<AudioBrain> {
+    BRAIN_ADDR
+        .get()
+        .expect("brain address should be set at server start")
+}
+
 #[cfg(test)]
 pub mod tests_utils;
-
-pub struct AppData {
-    brain_addr: Addr<AudioBrain>,
-}
-
-impl AppData {
-    pub fn new(brain_addr: Addr<AudioBrain>) -> Self {
-        Self { brain_addr }
-    }
-
-    pub fn brain_addr(&self) -> &Addr<AudioBrain> {
-        &self.brain_addr
-    }
-}

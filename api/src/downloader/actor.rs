@@ -9,11 +9,13 @@ use crate::{
         DownloadRequiredInformation, YoutubePlaylistDownloadInfo,
     },
     error::{AppError, AppErrorKind, IntoAppError},
+    node::node_server::SourceName,
+    state_storage::restore_state_actor::{DownloadQueueStateUpdateMessage, RestoreStateActor},
     utils::log_msg_received,
 };
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-use actix::{Actor, Context, Handler, Message, Recipient};
+use actix::{Actor, Addr, Context, Handler, Message, Recipient};
 use actix_rt::Arbiter;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -29,26 +31,27 @@ const MAX_CONSECUTIVE_BATCHES: usize = 10;
 pub struct AudioDownloader {
     download_thread: Arbiter,
     queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
+    restore_state_addr: Addr<RestoreStateActor>,
 }
 
-#[derive(Debug, Message)]
+#[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
 pub struct DownloadAudioRequest {
-    pub source_name: Option<Arc<str>>,
+    pub source_name: Option<SourceName>,
     pub addr: Recipient<NotifyDownloadUpdate>,
     pub required_info: DownloadRequiredInformation,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SerializableDownloadAudioRequest {
-    pub source_name: Option<Arc<str>>,
+    pub source_name: Option<SourceName>,
     pub required_info: DownloadRequiredInformation,
 }
 
 type SingleDownloadFinished =
     Result<(DownloadInfo, AudioMetadata, ItemUid<Arc<str>>), (DownloadInfo, AppError)>;
 
-#[derive(Message)]
+#[derive(Debug, Message)]
 #[rtype(result = "()")]
 pub enum NotifyDownloadUpdate {
     Queued(DownloadInfo),
@@ -57,10 +60,15 @@ pub enum NotifyDownloadUpdate {
     BatchUpdated { batch: DownloadInfo },
 }
 
+#[derive(Debug, Message)]
+#[rtype(result = "()")]
+pub struct RestoreQueue(pub Vec<DownloadAudioRequest>);
+
 impl AudioDownloader {
-    pub fn new(download_thread: Arbiter) -> Self {
+    pub fn new(download_thread: Arbiter, restore_state_addr: Addr<RestoreStateActor>) -> Self {
         Self {
             download_thread,
+            restore_state_addr,
             queue: Default::default(),
         }
     }
@@ -73,10 +81,11 @@ impl Actor for AudioDownloader {
         log::info!("stared new 'AudioDownloader', CONTEXT: {ctx:?}");
 
         let queue = self.queue.clone();
+        let restore_state_addr = self.restore_state_addr.clone().recipient();
 
         self.download_thread.spawn(async move {
             loop {
-                process_queue(queue.clone(), db_pool()).await;
+                process_queue(queue.clone(), db_pool(), &restore_state_addr).await;
                 actix_rt::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -116,8 +125,41 @@ impl Handler<DownloadAudioRequest> for AudioDownloader {
     }
 }
 
-async fn process_queue(queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>, pool: &PgPool) {
+impl Handler<RestoreQueue> for AudioDownloader {
+    type Result = ();
+
+    fn handle(&mut self, msg: RestoreQueue, _ctx: &mut Self::Context) -> Self::Result {
+        log_msg_received(&self, &msg);
+
+        match self.queue.try_lock() {
+            Ok(mut queue) => {
+                let len = queue.len();
+                queue.drain(..);
+                queue.append(&mut msg.0.into_iter().collect());
+
+                log::info!("restored {len} items to download queue");
+            }
+            Err(err) => log::error!("failed to restore download queue\nERROR: {err}"),
+        };
+    }
+}
+
+async fn process_queue(
+    queue: Arc<Mutex<VecDeque<DownloadAudioRequest>>>,
+    pool: &PgPool,
+    restore_state_addr: &Recipient<DownloadQueueStateUpdateMessage>,
+) {
     let mut queue = queue.lock().await;
+
+    restore_state_addr.do_send(DownloadQueueStateUpdateMessage(
+        queue
+            .iter()
+            .map(|item| SerializableDownloadAudioRequest {
+                source_name: item.source_name.clone(),
+                required_info: item.required_info.clone(),
+            })
+            .collect(),
+    ));
 
     if let Some(req) = queue.pop_front() {
         let DownloadAudioRequest {

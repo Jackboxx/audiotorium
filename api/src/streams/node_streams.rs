@@ -1,12 +1,7 @@
 use std::sync::Arc;
 
 use actix::Message;
-use actix_web::{
-    get,
-    http::StatusCode,
-    web::{self, Data},
-    HttpRequest, HttpResponse,
-};
+use actix_web::{get, http::StatusCode, web, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -14,12 +9,12 @@ use ts_rs::TS;
 
 use crate::{
     audio_playback::{audio_item::AudioMetadata, audio_player::AudioInfo},
+    brain_addr,
     downloader::info::DownloadInfo,
     error::AppError,
     node::{health::AudioNodeHealth, node_server::SourceName, node_session::AudioNodeSession},
     streams::deserialize_stringified_list,
     utils::get_node_by_source_name,
-    AppData,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -72,19 +67,18 @@ pub fn get_type_of_stream_data(msg: &AudioNodeInfoStreamMessage) -> AudioNodeInf
 
 #[get("/streams/node/{source_name}")]
 async fn get_node_stream(
-    data: Data<AppData>,
     source_name: web::Path<SourceName>,
     query: web::Query<StreamWantedInfoParams>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> HttpResponse {
-    let node_addr = match get_node_by_source_name(source_name.into_inner(), data.brain_addr()).await
-    {
-        Some(addr) => addr,
-        None => {
-            return HttpResponse::new(StatusCode::NOT_FOUND);
-        }
-    };
+    let node_addr =
+        match get_node_by_source_name(source_name.into_inner(), brain_addr().into()).await {
+            Some(addr) => addr,
+            None => {
+                return HttpResponse::new(StatusCode::NOT_FOUND);
+            }
+        };
 
     match ws::start(
         AudioNodeSession::new(node_addr, query.into_inner().wanted_info),

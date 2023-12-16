@@ -1,18 +1,13 @@
 use std::sync::Arc;
 
 use actix::Message;
-use actix_web::{
-    http::StatusCode,
-    post,
-    web::{self, Data},
-    HttpResponse,
-};
+use actix_web::{http::StatusCode, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::{
-    audio_playback::audio_player::LoopBounds, error::AppError, node::node_server::SourceName,
-    utils::get_node_by_source_name, AppData,
+    audio_playback::audio_player::LoopBounds, brain_addr, error::AppError,
+    node::node_server::SourceName, utils::get_node_by_source_name,
 };
 
 /// Commands a client can send to an audio node
@@ -101,12 +96,10 @@ pub struct LoopQueueParams {
 
 #[post("/commands/node/{source_name}")]
 pub async fn receive_node_cmd(
-    data: Data<AppData>,
     source_name: web::Path<SourceName>,
     cmd: web::Json<AudioNodeCommand>,
 ) -> HttpResponse {
-    let node_addr = match get_node_by_source_name(source_name.into_inner(), data.brain_addr()).await
-    {
+    let node_addr = match get_node_by_source_name(source_name.into_inner(), brain_addr()).await {
         Some(addr) => addr,
         None => {
             return HttpResponse::new(StatusCode::NOT_FOUND);

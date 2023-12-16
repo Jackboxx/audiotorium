@@ -1,19 +1,14 @@
 use std::sync::Arc;
 
 use actix::Message;
-use actix_web::{
-    get,
-    http::StatusCode,
-    web::{self, Data},
-    HttpRequest, HttpResponse,
-};
+use actix_web::{get, http::StatusCode, web, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    brain::brain_session::AudioBrainSession, node::node_server::AudioNodeInfo,
-    streams::deserialize_stringified_list, AppData,
+    brain::brain_session::AudioBrainSession, brain_addr, node::node_server::AudioNodeInfo,
+    streams::deserialize_stringified_list,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -43,13 +38,12 @@ pub fn get_type_of_stream_data(msg: &AudioBrainInfoStreamMessage) -> AudioBrainI
 
 #[get("/streams/brain")]
 async fn get_brain_stream(
-    data: Data<AppData>,
     query: web::Query<StreamWantedInfoParams>,
     req: HttpRequest,
     stream: web::Payload,
 ) -> HttpResponse {
     match ws::start(
-        AudioBrainSession::new(data.brain_addr().clone(), query.into_inner().wanted_info),
+        AudioBrainSession::new(brain_addr().clone(), query.into_inner().wanted_info),
         &req,
         stream,
     ) {
