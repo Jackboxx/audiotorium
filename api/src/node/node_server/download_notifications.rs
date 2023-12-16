@@ -104,6 +104,17 @@ impl Handler<NotifyDownloadUpdate> for AudioNode {
                     log::warn!("received a batch updated that wasn't a valid batch, valid batches are [youtube-playlist]");
                 }
             },
+            NotifyDownloadUpdate::BatchDownloadFailedToStart((info, err)) => {
+                self.active_downloads.remove(&info);
+                self.failed_downloads.insert(info, err);
+
+                let msg = AudioNodeInfoStreamMessage::Download(RunningDownloadInfo {
+                    active: self.active_downloads.clone().into_iter().collect(),
+                    failed: self.failed_downloads.clone().into_iter().collect(),
+                });
+
+                self.multicast(msg);
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 use crate::{
     audio_playback::audio_item::AudioMetadata,
-    database::store_data::store_playlist_item_relation_if_not_exists,
+    database::store_data::{
+        store_playlist_if_not_exists, store_playlist_item_relation_if_not_exists,
+    },
     db_pool,
     downloader::{
         download_identifier::Identifier,
@@ -58,6 +60,7 @@ pub enum NotifyDownloadUpdate {
     FailedToQueue((DownloadInfo, AppError)),
     SingleFinished(SingleDownloadFinished),
     BatchUpdated { batch: DownloadInfo },
+    BatchDownloadFailedToStart((DownloadInfo, AppError)),
 }
 
 #[derive(Debug, Message)]
@@ -187,6 +190,18 @@ async fn process_queue(
                 ref playlist_url,
                 video_urls,
             }) => {
+                let playlist_uid = playlist_url.uid();
+                match store_playlist_if_not_exists(&playlist_uid).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        addr.do_send(NotifyDownloadUpdate::BatchDownloadFailedToStart((
+                            DownloadInfo::yt_playlist_from_arc(&playlist_url.0, &video_urls),
+                            err,
+                        )));
+                        return;
+                    }
+                }
+
                 let (videos_to_process, videos_for_next_batch) =
                     if MAX_CONSECUTIVE_BATCHES > video_urls.len() {
                         (video_urls.as_ref(), Default::default())
